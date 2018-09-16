@@ -43,7 +43,7 @@ class Subject {
                         }};
   }
 
-  void next(T value) {
+  Subject &next(T value) {
     std::unique_lock<std::mutex> lock(d->mutex);
     if (d->nMemory > 0) {
       if (d->memory.size() == d->nMemory) {
@@ -54,6 +54,7 @@ class Subject {
     for (auto &callback : d->map) {
       callback.second(value);
     }
+    return *this;
   }
 
   void setMemorySize(std::size_t nMemory) {
