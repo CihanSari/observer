@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <array>
 #include <csari/observer.hpp>
 
 TEST(UnitTests, ObserverDiesEarly) {
@@ -140,4 +141,18 @@ TEST(UnitTests, streu) {
   EXPECT_FALSE(sub1Triggered);
   EXPECT_TRUE(sub2Triggered);
   EXPECT_TRUE(sub3Triggered);
+}
+
+TEST(UnitTests, voip_geek) {
+  csari::Subject<int> s;
+  s.setMemorySize(3);
+  s.next(0).next(1).next(2).next(3);
+  s.setMemorySize(2);
+  std::array<bool, 4> triggers{{false, false, false, false}};
+  csari::Subscription sub1 =
+      s.subscribe([&triggers](int i) { triggers.at(i) = true; });
+  EXPECT_FALSE(triggers.at(0));
+  EXPECT_FALSE(triggers.at(1));
+  EXPECT_TRUE(triggers.at(2));
+  EXPECT_TRUE(triggers.at(3));
 }
