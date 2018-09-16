@@ -119,3 +119,25 @@ TEST(UnitTests, SubjectDiesEarlyWithMemory) {
     senderThread.join();
   }
 }
+
+TEST(UnitTests, streu) {
+  csari::Subject<int> s;
+  bool sub1Triggered = false, sub2Triggered = false, sub3Triggered = false;
+  csari::Subscription sub1 = s.subscribe([&t = sub1Triggered](int i) {
+    t = true;
+    std::cout << "sub1(" << i << ")\n";
+  });
+  csari::Subscription sub2 = s.subscribe([&t = sub2Triggered](int i) {
+    t = true;
+    std::cout << "sub2(" << i << ")\n";
+  });
+  sub1.reset();
+  csari::Subscription sub3 = s.subscribe([&t = sub3Triggered](int i) {
+    t = true;
+    std::cout << "sub3(" << i << ")\n";
+  });
+  s.next(42);
+  EXPECT_FALSE(sub1Triggered);
+  EXPECT_TRUE(sub2Triggered);
+  EXPECT_TRUE(sub3Triggered);
+}
