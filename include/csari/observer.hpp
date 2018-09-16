@@ -60,7 +60,7 @@ class Subject {
   void setMemorySize(std::size_t nMemory) {
     std::unique_lock<std::mutex> lock(d->mutex);
     d->nMemory = nMemory;
-    while (d->memory.size() >= d->nMemory) {
+    while (d->memory.size() > d->nMemory) {
       d->memory.pop_front();
     }
   }
