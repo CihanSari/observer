@@ -13,7 +13,8 @@ class Subject {
     std::unordered_map<std::size_t, FCallback> map;
     std::mutex mutex;
     std::deque<T> memory;
-    std::size_t nMemory = 0;
+    std::size_t nMemory{0u};
+    std::size_t callbackCounter{0u};
   };
   std::shared_ptr<ObserverData> d = std::make_shared<ObserverData>();
 
@@ -21,7 +22,7 @@ class Subject {
   // Keep the returned pointer to keep receiving callbacks
   [[nodiscard]] Subscription subscribe(FCallback callback) {
     std::unique_lock<std::mutex> lock(d->mutex);
-    auto idx = d->map.size();
+    auto idx = d->callbackCounter++;
     d->map.emplace(idx, callback);
     for (auto &memory : d->memory) {
       callback(memory);
