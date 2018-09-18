@@ -156,3 +156,12 @@ TEST(UnitTests, voip_geek) {
   EXPECT_TRUE(triggers.at(2));
   EXPECT_TRUE(triggers.at(3));
 }
+
+TEST(UnitTests, voidCall) {
+  csari::Subject<void> s;
+  bool triggered = false;
+  csari::Subscription sub1 = s.subscribe([&triggered] { triggered = true; });
+  EXPECT_FALSE(triggered);
+  s.next();
+  EXPECT_TRUE(triggered);
+}
