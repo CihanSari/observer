@@ -52,8 +52,18 @@ class Subject {
       }
       d->memory.emplace_back(value);
     }
+    std::vector<FCallback> callbacks;
     for (auto &callback : d->map) {
-      callback.second(value);
+      callbacks.emplace_back(callback.second);
+    }
+    lock.unlock();
+    if (callbacks.size()>0) {
+      auto lastCallback = callbacks.back();
+      callbacks.pop_back();
+      for (auto& callback : callbacks) {
+        callback(value);
+      }
+      lastCallback(std::move(value));
     }
     return *this;
   }
@@ -100,8 +110,13 @@ class Subject<void> {
 
   Subject &next() {
     std::unique_lock<std::mutex> lock(d->mutex);
+    std::vector<FCallback> callbacks;
     for (auto &callback : d->map) {
-      callback.second();
+      callbacks.emplace_back(callback.second);
+    }
+    lock.unlock();
+    for (auto& callback : callbacks) {
+      callback();
     }
     return *this;
   }

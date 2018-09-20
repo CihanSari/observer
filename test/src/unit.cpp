@@ -165,3 +165,13 @@ TEST(UnitTests, voidCall) {
   s.next();
   EXPECT_TRUE(triggered);
 }
+
+TEST(UnitTests, unsubscribeOnCallback) {
+  csari::Subject<void> s;
+  bool triggered = false;
+  csari::Subscription sub1 = s.subscribe([&triggered] { triggered = true; });
+  csari::Subscription sub2 = s.subscribe([&sub1] { sub1.reset(); });
+  EXPECT_FALSE(triggered);
+  s.next();
+  EXPECT_TRUE(triggered);
+}
