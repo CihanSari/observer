@@ -4,29 +4,19 @@ Single header only, asynchronous observer structure. Connection is broken when s
 
 # How to use
 
-Add `include/csari/observer.hpp` to your project.
+Add `observer/include/csari/observer.hpp` to your project.
 
 ## Example
-
 ```cpp
-#include <csari/observer.hpp>
-#include <iostream>
-
-int main() {
-  csari::Subject<int> subject;
-  auto subscription = subject.subscribe(
-      [](int value) { std::cout << "Received: " << value << '\n'; });
-  for (auto i = 0; i < 7; i += 1) {
-    subject.next(i);
-  }
-  return 0;
-}
+csari::Subject<int> subject;
+auto const subscription = subject.subscribe(
+  [](int const value) { 
+    // Do something... 
+  });
+subject.next(42);
 ```
 
 More examples are in unit tests `test/src/unit.cpp`.
-
-## Option with no C++17 features
-Simply remove `[[nodiscard]]` on `subscribe` function. But remember, you should capture the subscription, or else you will break the subscription in the same line.
 
 # Caution
 Callback functions are called on the sender's thread; i.e. this library does not provide an event loop. If the sender can be in a different thread, please ensure that callback functions are thread-safe.

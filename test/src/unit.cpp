@@ -175,3 +175,41 @@ TEST(UnitTests, unsubscribeOnCallback) {
   s.next();
   EXPECT_TRUE(triggered);
 }
+
+TEST(UnitTests, observableLifeTimeTests) {
+  auto const observable = [] {
+    csari::Subject<int> s;
+    auto observable = s.asObservable();
+    EXPECT_TRUE(observable.isAlive());
+    return observable;
+  }();
+  EXPECT_FALSE(observable.isAlive());
+}
+
+TEST(UnitTests, observableSubscriptionTests1) {
+  csari::Subject<int> s;
+  auto o = s.asObservable();
+  bool triggered = false;
+  auto sub1 = o.subscribe([&triggered](int) { triggered = true; });
+  auto sub2 = o.subscribe([&sub1](int) { sub1.reset(); });
+  EXPECT_FALSE(triggered);
+  s.next(1);
+  EXPECT_TRUE(triggered);
+}
+
+TEST(UnitTests, observableShallowCopyTests1) {
+  auto s1 = std::make_unique<csari::Subject<int>>();
+  auto s2 = s1->share();
+  auto o1 = s1->asObservable();
+  s1.reset();
+  // s2 is completely functional and o1 is still connected to s2
+  auto o11 = o1.share();
+  auto o2 = s2.asObservable();
+  auto o21 = o2.share();
+  bool triggered = false;
+  auto sub1 = o11.subscribe([&triggered](int) { triggered = true; });
+  auto sub2 = o21.subscribe([&sub1](int) { sub1.reset(); });
+  EXPECT_FALSE(triggered);
+  s2.share().next(1);
+  EXPECT_TRUE(triggered);
+}
