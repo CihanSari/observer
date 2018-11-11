@@ -23,6 +23,8 @@ add_subdirectory("${CMAKE_BINARY_DIR}/googletest-src"
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Now simply link against gtest or gtest_main as needed. Eg
-add_executable(${testcase} src/${testcase}.cpp)
+add_executable(${testcase} 
+src/${testcase}.cpp
+../observer/include/csari/observer.hpp)
 target_link_libraries(${testcase} gtest_main csari_observer)
 add_test(NAME ${testcase}_test COMMAND ${testcase})

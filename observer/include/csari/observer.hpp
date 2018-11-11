@@ -36,7 +36,7 @@ struct ObserverCore {
 
   template <class U = T, EnableIfNotVoid<U>...>
   void setMemorySize(std::size_t const nMemory) {
-    std::unique_lock<std::mutex> lock(m_mutex);
+    auto const lock = std::unique_lock<std::mutex>(m_mutex);
     m_nMemory = nMemory;
     auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
     while (memoryQue.size() > m_nMemory) {
@@ -46,15 +46,15 @@ struct ObserverCore {
 
   template <class U = T, EnableIfNotVoid<U>...>
   void callbackFromMemory(FCallback const callback) {
-    auto memoryQue = std::any_cast<std::deque<T>>(this->m_memory);
-    for (auto &instance : memoryQue) {
-      callback(std::move(instance));
-    }
+    auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
+    std::for_each(
+        memoryQue.cbegin(), memoryQue.cend(),
+        [&callback](auto const &instance) { std::invoke(callback, instance); });
   }
 
   template <class U = T, EnableIfNotVoid<U>...>
   void next(U value) {
-    std::unique_lock<std::mutex> lock(m_mutex);
+    auto lock = std::unique_lock<std::mutex>(m_mutex);
     if (m_nMemory > 0) {
       auto &memory = std::any_cast<std::deque<T> &>(m_memory);
       if (memory.size() == m_nMemory) {
@@ -62,18 +62,20 @@ struct ObserverCore {
       }
       memory.emplace_back(value);
     }
-    std::vector<FCallback> callbacks;
-    for (auto &callback : m_map) {
-      callbacks.emplace_back(callback.second);
-    }
+    auto callbacks = std::vector<FCallback>{};
+    callbacks.reserve(m_map.size());
+    std::transform(m_map.cbegin(), m_map.cend(), std::back_inserter(callbacks),
+                   [](std::pair<std::size_t, FCallback> const &callbackPair) {
+                     return callbackPair.second;
+                   });
     lock.unlock();
     if (callbacks.size() > 0) {
-      auto lastCallback = callbacks.back();
+      auto const lastCallback = callbacks.back();
       callbacks.pop_back();
-      for (auto &callback : callbacks) {
-        callback(value);
-      }
-      lastCallback(std::move(value));
+      std::for_each(
+          callbacks.cbegin(), callbacks.cend(),
+          [&value](auto const &callback) { std::invoke(callback, value); });
+      std::invoke(lastCallback, std::move(value));
     }
   }
 
@@ -84,37 +86,38 @@ struct ObserverCore {
 
   template <class U = T, EnableIfVoid<U>...>
   void setMemorySize(std::size_t nMemory) {
-    std::unique_lock<std::mutex> lock(m_mutex);
+    auto const lock = std::unique_lock<std::mutex>(m_mutex);
     m_nMemory = nMemory;
     auto const memorySize = std::any_cast<std::size_t &>(m_memory);
     if (memorySize > m_nMemory) {
-      this->memory = m_nMemory;
+      m_memory = m_nMemory;
     }
   }
 
   template <class U = T, EnableIfVoid<U>...>
   void callbackFromMemory(FCallback callback) {
-    auto const m_memorySize = std::any_cast<std::size_t &>(this->m_memory);
+    auto const &m_memorySize = std::any_cast<std::size_t &>(m_memory);
     for (auto i = std::size_t{0}; i < m_memorySize; ++i) {
-      callback();
+      std::invoke(callback);
     }
   }
 
   template <class U = T, EnableIfVoid<U>...>
   void next() {
-    std::unique_lock<std::mutex> lock(m_mutex);
+    auto lock = std::unique_lock<std::mutex>(m_mutex);
     auto &memory = std::any_cast<std::size_t &>(m_memory);
     if (memory < m_nMemory) {
       ++memory;
     }
-    std::vector<FCallback> callbacks;
-    for (auto &callback : m_map) {
-      callbacks.emplace_back(callback.second);
-    }
+    auto callbacks = std::vector<FCallback>{};
+    callbacks.reserve(m_map.size());
+    std::transform(m_map.cbegin(), m_map.cend(), std::back_inserter(callbacks),
+                   [](std::pair<std::size_t, FCallback> const &callbackPair) {
+                     return callbackPair.second;
+                   });
     lock.unlock();
-    for (auto &callback : callbacks) {
-      callback();
-    }
+    std::for_each(callbacks.cbegin(), callbacks.cend(),
+                  [](auto const &callback) { std::invoke(callback); });
   }
 
   ObserverCore() { makeMemory<T>(); }
@@ -122,25 +125,24 @@ struct ObserverCore {
   static Subscription subscribe(std::shared_ptr<ObserverCore> d,
                                 FCallback callback) {
     // Subject is still alive, we can proceed
-    std::unique_lock<std::mutex> lock(d->m_mutex);
+    auto lock = std::unique_lock<std::mutex>(d->m_mutex);
     auto idx = d->m_callbackCounter++;
     d->m_map.emplace(idx, callback);
-    std::vector<FCallback> callbacks;
     lock.unlock();
     d->callbackFromMemory(callback);
     // return a scope-guard, which will unsubscribe when the object is
     // discarded (out of scope) or manually released
-    return Subscription{(void *)3,
-                        [idx, w_d = std::weak_ptr<ObserverCore>(d)](void *) {
-                          if (auto d = w_d.lock()) {
-                            // Subject is still alive, we should unsubscribe
-                            std::unique_lock<std::mutex> lock(d->m_mutex);
-                            auto it = d->m_map.find(idx);
-                            if (it != d->m_map.end()) {
-                              d->m_map.erase(it);
-                            }
-                          }
-                        }};
+    return Subscription{
+        (void *)3, [idx, w_d = std::weak_ptr<ObserverCore>(d)](void *) {
+          if (auto d = w_d.lock()) {
+            // Subject is still alive, we should unsubscribe
+            auto const lock = std::unique_lock<std::mutex>(d->m_mutex);
+            auto it = d->m_map.find(idx);
+            if (it != d->m_map.end()) {
+              d->m_map.erase(it);
+            }
+          }
+        }};
   }
 };
 

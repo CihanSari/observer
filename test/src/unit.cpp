@@ -213,3 +213,38 @@ TEST(UnitTests, observableShallowCopyTests1) {
   s2.share().next(1);
   EXPECT_TRUE(triggered);
 }
+
+TEST(UnitTests, voidMemoryTests) {
+  auto subject = csari::Subject<void>{};
+  subject.setMemorySize(30);
+  for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
+    subject.next();
+  }
+  class SimpleCounter {
+   public:
+    SimpleCounter(csari::Subject<void> &subject)
+        : counter{0}, sub(subject.subscribe([this] { ++counter; })) {}
+    int operator()() const { return counter; }
+
+   private:
+    int counter;
+    csari::Subscription sub;
+  };
+  auto const firstCallCounter = SimpleCounter{subject};
+  EXPECT_EQ(firstCallCounter(), 20);
+  subject.setMemorySize(10);
+  auto const secondCallCounter = SimpleCounter{subject};
+  EXPECT_EQ(secondCallCounter(), 10);
+  subject.setMemorySize(5);
+  auto const thirdCallCounter = SimpleCounter{subject};
+  EXPECT_EQ(thirdCallCounter(), 5);
+  for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
+    subject.next();
+  }
+  subject.setMemorySize(0);
+  auto const fourthCallCounter = SimpleCounter{subject};
+  EXPECT_EQ(firstCallCounter(), 40);
+  EXPECT_EQ(secondCallCounter(), 30);
+  EXPECT_EQ(thirdCallCounter(), 25);
+  EXPECT_EQ(fourthCallCounter(), 0);
+}
