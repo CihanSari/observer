@@ -1,7 +1,6 @@
 #pragma once
 #include <any>
 #include <deque>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -15,10 +14,71 @@ using EnableIfNotVoid =
 template <typename U>
 using EnableIfVoid =
     typename std::enable_if<std::is_same<U, void>::value>::type;
+
+template <class Sig>
+struct invokable;
+
+namespace invokableInternal {
+template <class T>
+struct emplace_as {};
+}  // namespace invokableInternal
+template <class... Args>
+struct invokable<void(Args...)> {
+  // can be default ctored and moved:
+  invokable() = default;
+  invokable(invokable &&) = default;
+  invokable &operator=(invokable &&) = default;
+  invokable(invokable const &) noexcept = default;
+  invokable &operator=(invokable const &) noexcept = default;
+
+  // implicitly create from a type that can be compatibly invoked
+  // and isn't a fire_once itself
+  template <class F, std::enable_if_t<
+                         !std::is_same<std::decay_t<F>, invokable>{}, int> = 0>
+
+  invokable(F &&f)
+      : invokable(invokableInternal::emplace_as<std::decay_t<F>>{},
+                  std::forward<F>(f)) {}
+  // emplacement construct using the emplace_as tag type:
+  template <class F, class... FArgs>
+  invokable(invokableInternal::emplace_as<F>, FArgs &&... fargs) {
+    rebind<F>(std::forward<FArgs>(fargs)...);
+  }
+  // invoke in the case where R is void:
+  void operator()(Args... args) {
+    m_invoke(m_ptr.get(), std::forward<Args>(args)...);
+  }
+
+  // empty the fire_once:
+  void clear() {
+    m_invoke = nullptr;
+    m_ptr.reset();
+  }
+
+  // test if it is non-empty:
+  explicit operator bool() const { return static_cast<bool>(m_ptr); }
+
+  // change what the invokable contains:
+  template <class F, class... FArgs>
+  void rebind(FArgs &&... fargs) {
+    clear();
+    auto pf = std::make_unique<F>(std::forward<FArgs>(fargs)...);
+    m_invoke = [](void *pf, Args... args) {
+      (*(F *)pf)(std::forward<Args>(args)...);
+    };
+    m_ptr = {pf.release(), [](void *pf) { delete (F *)(pf); }};
+  }
+
+ private:
+  // storage.  A unique pointer with deleter
+  // and an invoker function pointer:
+  std::shared_ptr<void> m_ptr{nullptr, [](void *) {}};
+  void (*m_invoke)(void *, Args...) = nullptr;
+};
+
 template <typename T>
 struct ObserverCore {
-  using FCallback = std::function<void(T)>;
-  // Listeners
+  using FCallback = csari::invokable<void(T)>;  // Listeners
   std::unordered_map<std::size_t, FCallback> m_map;
   // thread safety
   std::mutex m_mutex;
@@ -45,11 +105,10 @@ struct ObserverCore {
   }
 
   template <class U = T, EnableIfNotVoid<U>...>
-  void callbackFromMemory(FCallback const callback) {
+  void callbackFromMemory(FCallback &callback) {
     auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
-    std::for_each(
-        memoryQue.cbegin(), memoryQue.cend(),
-        [&callback](auto const &instance) { std::invoke(callback, instance); });
+    std::for_each(memoryQue.cbegin(), memoryQue.cend(),
+                  [&callback](T instance) { callback(std::move(instance)); });
   }
 
   template <class U = T, EnableIfNotVoid<U>...>
@@ -70,12 +129,11 @@ struct ObserverCore {
                    });
     lock.unlock();
     if (callbacks.size() > 0) {
-      auto const lastCallback = callbacks.back();
+      auto lastCallback = callbacks.back();
       callbacks.pop_back();
-      std::for_each(
-          callbacks.cbegin(), callbacks.cend(),
-          [&value](auto const &callback) { std::invoke(callback, value); });
-      std::invoke(lastCallback, std::move(value));
+      std::for_each(callbacks.begin(), callbacks.end(),
+                    [&value](auto &callback) { callback(value); });
+      lastCallback(std::move(value));
     }
   }
 
@@ -95,10 +153,10 @@ struct ObserverCore {
   }
 
   template <class U = T, EnableIfVoid<U>...>
-  void callbackFromMemory(FCallback callback) {
+  void callbackFromMemory(FCallback &callback) {
     auto const &m_memorySize = std::any_cast<std::size_t &>(m_memory);
     for (auto i = std::size_t{0}; i < m_memorySize; ++i) {
-      std::invoke(callback);
+      callback();
     }
   }
 
@@ -116,8 +174,8 @@ struct ObserverCore {
                      return callbackPair.second;
                    });
     lock.unlock();
-    std::for_each(callbacks.cbegin(), callbacks.cend(),
-                  [](auto const &callback) { std::invoke(callback); });
+    std::for_each(callbacks.begin(), callbacks.end(),
+                  [](auto &callback) { callback(); });
   }
 
   ObserverCore() { makeMemory<T>(); }
@@ -178,8 +236,8 @@ class Subject {
   using FCallback = typename ObserverCore<T>::FCallback;
   Subject() = default;
   // Keep the returned pointer to keep receiving callbacks
-  [[nodiscard]] Subscription subscribe(FCallback callback) {
-    return ObserverCore<T>::subscribe(d, std::move(callback));
+  [[nodiscard]] Subscription subscribe(FCallback &&callback) {
+    return ObserverCore<T>::subscribe(d, std::forward<FCallback>(callback));
   }
 
   void setMemorySize(std::size_t const nMemory) {
