@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <any>
 #include <deque>
 #include <memory>
@@ -16,40 +17,41 @@ using EnableIfVoid =
     typename std::enable_if<std::is_same<U, void>::value>::type;
 
 template <class Sig>
-struct invokable;
+struct Invokable;
 
 namespace invokableInternal {
 template <class T>
-struct emplace_as {};
+struct EmplaceAs final {};
 }  // namespace invokableInternal
 template <class... Args>
-struct invokable<void(Args...)> {
-  // can be default ctored and moved:
-  invokable() = default;
-  invokable(invokable &&) = default;
-  invokable &operator=(invokable &&) = default;
-  invokable(invokable const &) noexcept = default;
-  invokable &operator=(invokable const &) noexcept = default;
+struct Invokable<void(Args...)> final {
+  // can be default constructed and moved:
+  Invokable() = default;
+  Invokable(Invokable &&) = default;
+  Invokable &operator=(Invokable &&) = default;
+  Invokable(Invokable const &) noexcept = default;
+  Invokable &operator=(Invokable const &) noexcept = default;
+  ~Invokable() = default;
 
   // implicitly create from a type that can be compatibly invoked
-  // and isn't a fire_once itself
+  // and isn't a Invokable itself
   template <class F, std::enable_if_t<
-                         !std::is_same<std::decay_t<F>, invokable>{}, int> = 0>
+                         !std::is_same<std::decay_t<F>, Invokable>{}, int> = 0>
 
-  invokable(F &&f)
-      : invokable(invokableInternal::emplace_as<std::decay_t<F>>{},
-                  std::forward<F>(f)) {}
-  // emplacement construct using the emplace_as tag type:
+  Invokable(F f)
+      : Invokable(invokableInternal::EmplaceAs<std::decay_t<F>>{},
+                  std::move(f)) {}
+  // emplacement construct using the EmplaceAs tag type:
   template <class F, class... FArgs>
-  invokable(invokableInternal::emplace_as<F>, FArgs &&... fargs) {
-    rebind<F>(std::forward<FArgs>(fargs)...);
+  Invokable(invokableInternal::EmplaceAs<F>, FArgs &&... functionArgs) {
+    rebind<F>(std::forward<FArgs>(functionArgs)...);
   }
   // invoke in the case where R is void:
   void operator()(Args... args) {
     m_invoke(m_ptr.get(), std::forward<Args>(args)...);
   }
 
-  // empty the fire_once:
+  // empty the Invokable:
   void clear() {
     m_invoke = nullptr;
     m_ptr.reset();
@@ -60,25 +62,22 @@ struct invokable<void(Args...)> {
 
   // change what the invokable contains:
   template <class F, class... FArgs>
-  void rebind(FArgs &&... fargs) {
-    clear();
-    auto pf = std::make_unique<F>(std::forward<FArgs>(fargs)...);
+  void rebind(FArgs &&... functionArgs) {
+    m_ptr = std::make_shared<F>(std::forward<FArgs>(functionArgs)...);
     m_invoke = [](void *pf, Args... args) {
-      (*(F *)pf)(std::forward<Args>(args)...);
+      (*static_cast<F *>(pf))(std::forward<Args>(args)...);
     };
-    m_ptr = {pf.release(), [](void *pf) { delete (F *)(pf); }};
   }
 
  private:
-  // storage.  A unique pointer with deleter
-  // and an invoker function pointer:
-  std::shared_ptr<void> m_ptr{nullptr, [](void *) {}};
+  // storage for the invokable and an invoker function pointer:
+  std::shared_ptr<void> m_ptr{};
   void (*m_invoke)(void *, Args...) = nullptr;
 };
 
 template <typename T>
-struct ObserverCore {
-  using FCallback = csari::invokable<void(T)>;  // Listeners
+struct ObserverCore final {
+  using FCallback = Invokable<void(T)>;  // Listeners
   std::unordered_map<std::size_t, FCallback> m_map;
   // thread safety
   std::mutex m_mutex;
@@ -128,7 +127,7 @@ struct ObserverCore {
                      return callbackPair.second;
                    });
     lock.unlock();
-    if (callbacks.size() > 0) {
+    if (!callbacks.empty()) {
       auto lastCallback = callbacks.back();
       callbacks.pop_back();
       std::for_each(callbacks.begin(), callbacks.end(),
@@ -154,8 +153,8 @@ struct ObserverCore {
 
   template <class U = T, EnableIfVoid<U>...>
   void callbackFromMemory(FCallback &callback) {
-    auto const &m_memorySize = std::any_cast<std::size_t &>(m_memory);
-    for (auto i = std::size_t{0}; i < m_memorySize; ++i) {
+    auto const &memorySize = std::any_cast<std::size_t &>(m_memory);
+    for (auto i = std::size_t{0}; i < memorySize; ++i) {
       callback();
     }
   }
@@ -190,26 +189,34 @@ struct ObserverCore {
     d->callbackFromMemory(callback);
     // return a scope-guard, which will unsubscribe when the object is
     // discarded (out of scope) or manually released
-    return Subscription{
-        (void *)3, [idx, w_d = std::weak_ptr<ObserverCore>(d)](void *) {
-          if (auto d = w_d.lock()) {
-            // Subject is still alive, we should unsubscribe
-            auto const lock = std::unique_lock<std::mutex>(d->m_mutex);
-            auto it = d->m_map.find(idx);
-            if (it != d->m_map.end()) {
-              d->m_map.erase(it);
-            }
+    struct SubscriptionCleanUp final {
+      SubscriptionCleanUp(std::size_t const idx,
+                          std::weak_ptr<ObserverCore> weakD)
+          : idx(idx), weakD(std::move(weakD)) {}
+      ~SubscriptionCleanUp() {
+        if (auto d = weakD.lock()) {
+          // Subject is still alive, we should unsubscribe
+          auto const lock = std::unique_lock<std::mutex>(d->m_mutex);
+          auto it = d->m_map.find(idx);
+          if (it != d->m_map.end()) {
+            d->m_map.erase(it);
           }
-        }};
+        }
+      }
+      std::size_t idx;
+      std::weak_ptr<ObserverCore> weakD;
+    };
+    return Subscription{std::make_shared<SubscriptionCleanUp>(idx, d)};
   }
 };
 
 template <typename T>
-class Observable {
+class Observable final {
   std::weak_ptr<ObserverCore<T>> d;
 
  public:
   using FCallback = typename ObserverCore<T>::FCallback;
+  Observable() = default;
   Observable(std::weak_ptr<ObserverCore<T>> data) : d(std::move(data)) {}
 
   bool isAlive() const { return !d.expired(); }
@@ -228,9 +235,9 @@ class Observable {
 };
 
 template <typename T>
-class Subject {
+class Subject final {
   std::shared_ptr<ObserverCore<T>> d = std::make_shared<ObserverCore<T>>();
-  Subject(std::shared_ptr<ObserverCore<T>> shallowCore) : d(shallowCore) {}
+  explicit Subject(std::shared_ptr<ObserverCore<T>> shallowCore) : d(shallowCore) {}
 
  public:
   using FCallback = typename ObserverCore<T>::FCallback;
@@ -247,7 +254,7 @@ class Subject {
   [[nodiscard]] Observable<T> asObservable() const { return {d}; }
 
   Subject share() const {
-    return {d};
+    return Subject{d};
   }
 
   template <class U = T, EnableIfVoid<U>...>
