@@ -10,6 +10,8 @@
 
 namespace csari {
 using Subscription = std::shared_ptr<void>;
+template <class Sig>
+struct Invokable;
 namespace observerInternal {
 template <typename U>
 using EnableIfNotVoid =
@@ -17,14 +19,9 @@ using EnableIfNotVoid =
 template <typename U>
 using EnableIfVoid =
     typename std::enable_if<std::is_same<U, void>::value>::type;
-
-template <class Sig>
-struct Invokable;
-
-namespace invokableInternal {
 template <class T>
 struct EmplaceAs final {};
-}  // namespace invokableInternal
+}  // namespace observerInternal
 template <class... Args>
 struct Invokable<void(Args...)> final {
   Invokable() = default;
@@ -35,11 +32,11 @@ struct Invokable<void(Args...)> final {
                          !std::is_same<std::decay_t<F>, Invokable>{}, int> = 0>
 
   Invokable(F &&f)
-      : Invokable(invokableInternal::EmplaceAs<std::decay_t<F>>{},
+      : Invokable(observerInternal::EmplaceAs<std::decay_t<F>>{},
                   std::forward<F>(f)) {}
   // emplacement construct using the EmplaceAs tag type:
   template <class F, class... FArgs>
-  Invokable(invokableInternal::EmplaceAs<F>, FArgs &&... functionArgs) {
+  Invokable(observerInternal::EmplaceAs<F>, FArgs &&... functionArgs) {
     rebind<F>(std::forward<FArgs>(functionArgs)...);
   }
 
@@ -72,7 +69,7 @@ struct Invokable<void(Args...)> final {
   std::any m_ptr{};
   void (*m_invoke)(std::any const &, Args...) = nullptr;
 };
-
+namespace observerInternal {
 // Subscription life-time guard, which will unsubscribe when the object
 // is discarded (out of scope) or manually released
 template <typename T>
@@ -82,6 +79,11 @@ struct SubscriptionCleanUp final {
   SubscriptionCleanUp(std::size_t const idx,
                       std::weak_ptr<ObserverCore<T>> weakD)
       : idx(idx), weakD(std::move(weakD)) {}
+  SubscriptionCleanUp() = delete;
+  SubscriptionCleanUp(SubscriptionCleanUp &&) = delete;
+  SubscriptionCleanUp &operator=(SubscriptionCleanUp &&) = delete;
+  SubscriptionCleanUp(SubscriptionCleanUp const &) = delete;
+  SubscriptionCleanUp &operator=(SubscriptionCleanUp const &) = delete;
   ~SubscriptionCleanUp() {
     if (auto d = weakD.lock()) {
       // Subject is still alive, we should unsubscribe
