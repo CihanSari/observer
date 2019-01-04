@@ -4,23 +4,24 @@
 #include <csari/observer.hpp>
 
 TEST(UnitTests, ObserverDiesEarly) {
+  using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
     for (auto i = 0; i < 7; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
       subject->next(i);
-      std::this_thread::sleep_for(std::chrono::milliseconds{5});
+      std::this_thread::sleep_for(5ms);
     }
     subject.reset();
     std::cout << "[Sender] Closed\n";
   });
   auto receiverThread = std::thread{[ptrSubject = subject.get()] {
-    std::this_thread::sleep_for(std::chrono::milliseconds{5});
+    std::this_thread::sleep_for(5ms);
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int const value) {
+    auto const subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    std::this_thread::sleep_for(20ms);
     std::cout << "[Receiver] Unsubscribed\n";
   }};
   if (receiverThread.joinable()) {
@@ -32,23 +33,24 @@ TEST(UnitTests, ObserverDiesEarly) {
 }
 
 TEST(UnitTests, SubjectDiesEarly) {
+  using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
     for (auto i = 0; i < 5; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
       subject->next(i);
-      std::this_thread::sleep_for(std::chrono::milliseconds{5});
+      std::this_thread::sleep_for(5ms);
     }
     subject.reset();
     std::cout << "[Sender] Closed\n";
   });
   auto receiverThread = std::thread{[ptrSubject = subject.get()] {
-    std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    std::this_thread::sleep_for(10ms);
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int const value) {
+    auto const subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    std::this_thread::sleep_for(10ms);
     std::cout << "[Receiver] Unsubscribed\n";
   }};
   if (receiverThread.joinable()) {
@@ -60,24 +62,25 @@ TEST(UnitTests, SubjectDiesEarly) {
 }
 
 TEST(UnitTests, ObserverDiesEarlyWithMemory) {
+  using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
     subject->setMemorySize(2);
     for (auto i = 0; i < 10; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
       subject->next(i);
-      std::this_thread::sleep_for(std::chrono::milliseconds{5});
+      std::this_thread::sleep_for(5ms);
     }
     subject.reset();
     std::cout << "[Sender] Closed\n";
   });
   auto receiverThread = std::thread{[ptrSubject = subject.get()] {
-    std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    std::this_thread::sleep_for(50ms);
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int const value) {
+    auto const subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds{25});
+    std::this_thread::sleep_for(25ms);
     std::cout << "[Receiver] Unsubscribed\n";
   }};
   if (receiverThread.joinable()) {
@@ -89,25 +92,25 @@ TEST(UnitTests, ObserverDiesEarlyWithMemory) {
 }
 
 TEST(UnitTests, SubjectDiesEarlyWithMemory) {
+  using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
-
   auto senderThread = std::thread([&subject] {
     subject->setMemorySize(2);
     for (auto i = 0; i < 10; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
       subject->next(i);
-      std::this_thread::sleep_for(std::chrono::milliseconds{5});
+      std::this_thread::sleep_for(5ms);
     }
     subject.reset();
     std::cout << "[Sender] Closed\n";
   });
   auto receiverThread = std::thread{[ptrSubject = subject.get()] {
-    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    std::this_thread::sleep_for(20ms);
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int const value) {
+    auto const subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    std::this_thread::sleep_for(20ms);
     std::cout << "[Receiver] Unsubscribed\n";
   }};
   if (receiverThread.joinable()) {
@@ -146,7 +149,7 @@ TEST(UnitTests, voip_geek) {
   subject.next(0).next(1).next(2).next(3);
   subject.setMemorySize(2);
   auto triggers = std::array{false, false, false, false};
-  auto sub1 =
+  auto const sub1 =
       subject.subscribe([&triggers](int const i) { triggers.at(i) = true; });
   EXPECT_FALSE(triggers.at(0));
   EXPECT_FALSE(triggers.at(1));
@@ -184,43 +187,44 @@ TEST(UnitTests, observableLifeTimeTests) {
 }
 
 TEST(UnitTests, observableSubscriptionTests1) {
-  auto subject = csari::Subject<int>{};
-  auto o = subject.asObservable();
+  auto subject = csari::Subject<void>{};
+  auto observable = subject.asObservable();
   auto triggered = false;
-  auto sub1 = o.subscribe([&triggered](int) { triggered = true; });
-  auto const sub2 = o.subscribe([&sub1](int) { sub1.reset(); });
+  auto sub1 = observable.subscribe([&triggered] { triggered = true; });
+  auto const sub2 = observable.subscribe([&sub1] { sub1.reset(); });
   EXPECT_FALSE(triggered);
-  subject.next(1);
+  subject.next();
   EXPECT_TRUE(triggered);
 }
 
 TEST(UnitTests, observableShallowCopyTests1) {
-  auto s1 = std::make_unique<csari::Subject<int>>();
-  auto s2 = s1->share();
+  auto s1 = std::make_unique<csari::Subject<std::any>>();
+  auto const s2 = s1->share();
   auto const o1 = s1->asObservable();
   s1.reset();
   // s2 is completely functional and o1 is still connected to s2
   auto o11 = o1.share();
-  auto o2 = s2.asObservable();
+  auto const o2 = s2.asObservable();
   auto o21 = o2.share();
   auto triggered = false;
-  auto sub1 = o11.subscribe([&triggered](int) { triggered = true; });
-  auto const sub2 = o21.subscribe([&sub1](int) { sub1.reset(); });
+  auto sub1 = o11.subscribe([&triggered](auto) { triggered = true; });
+  auto const sub2 = o21.subscribe([&sub1](auto) { sub1.reset(); });
   EXPECT_FALSE(triggered);
-  s2.share().next(1);
+  s2.share().next({});
   EXPECT_TRUE(triggered);
 }
 
 TEST(UnitTests, voidMemoryTests) {
-  auto subject = csari::Subject<void>{};
+  auto subject = csari::Subject<int>{};
   subject.setMemorySize(30);
   for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
-    subject.next();
+    subject.next(42);
   }
   class SimpleCounter final {
    public:
-    explicit SimpleCounter(csari::Subject<void> &subject)
-        : counter{0}, sub(subject.subscribe([this] { ++counter; })) {}
+    explicit SimpleCounter(csari::Subject<int> &subject)
+        : counter{0},
+          sub(subject.subscribe([&counter = counter](auto) { ++counter; })) {}
     int operator()() const { return counter; }
 
    private:
@@ -228,20 +232,27 @@ TEST(UnitTests, voidMemoryTests) {
     csari::Subscription sub;
   };
   auto const firstCallCounter = SimpleCounter{subject};
-  EXPECT_EQ(firstCallCounter(), 20);
   subject.setMemorySize(10);
   auto const secondCallCounter = SimpleCounter{subject};
-  EXPECT_EQ(secondCallCounter(), 10);
   subject.setMemorySize(5);
   auto const thirdCallCounter = SimpleCounter{subject};
-  EXPECT_EQ(thirdCallCounter(), 5);
-  for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
-    subject.next();
-  }
   subject.setMemorySize(0);
   auto const fourthCallCounter = SimpleCounter{subject};
+
+  EXPECT_EQ(firstCallCounter(), 20);
+  EXPECT_EQ(secondCallCounter(), 10);
+  EXPECT_EQ(thirdCallCounter(), 5);
+  EXPECT_EQ(fourthCallCounter(), 0);
+
+  for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
+    subject.next(42);
+  }
+
+  auto const fifthCallCounter = SimpleCounter{subject};
+
   EXPECT_EQ(firstCallCounter(), 40);
   EXPECT_EQ(secondCallCounter(), 30);
   EXPECT_EQ(thirdCallCounter(), 25);
-  EXPECT_EQ(fourthCallCounter(), 0);
+  EXPECT_EQ(fourthCallCounter(), 20);
+  EXPECT_EQ(fifthCallCounter(), 0);
 }
