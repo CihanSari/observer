@@ -4,21 +4,20 @@
 #include <csari/observer.hpp>
 
 TEST(UnitTests, ObserverDiesEarly) {
-  csari::Subject<int> *ptrSubject = nullptr;
-  auto senderThread = std::thread([&ptrSubject] {
-    auto subject = std::make_unique<csari::Subject<int>>();
-    ptrSubject = subject.get();
+  auto subject = std::make_unique<csari::Subject<int>>();
+  auto senderThread = std::thread([&subject] {
     for (auto i = 0; i < 7; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
-      ptrSubject->next(i);
+      subject->next(i);
       std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
+    subject.reset();
     std::cout << "[Sender] Closed\n";
   });
-  auto receiverThread = std::thread{[&ptrSubject] {
+  auto receiverThread = std::thread{[ptrSubject = subject.get()] {
     std::this_thread::sleep_for(std::chrono::milliseconds{5});
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int value) {
+    auto subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
     std::this_thread::sleep_for(std::chrono::milliseconds{20});
@@ -33,21 +32,20 @@ TEST(UnitTests, ObserverDiesEarly) {
 }
 
 TEST(UnitTests, SubjectDiesEarly) {
-  csari::Subject<int> *ptrSubject = nullptr;
-  auto senderThread = std::thread([&ptrSubject] {
-    auto subject = std::make_unique<csari::Subject<int>>();
-    ptrSubject = subject.get();
+  auto subject = std::make_unique<csari::Subject<int>>();
+  auto senderThread = std::thread([&subject] {
     for (auto i = 0; i < 5; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
-      ptrSubject->next(i);
+      subject->next(i);
       std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
+    subject.reset();
     std::cout << "[Sender] Closed\n";
   });
-  auto receiverThread = std::thread{[&ptrSubject] {
+  auto receiverThread = std::thread{[ptrSubject = subject.get()] {
     std::this_thread::sleep_for(std::chrono::milliseconds{10});
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int value) {
+    auto subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
     std::this_thread::sleep_for(std::chrono::milliseconds{10});
@@ -62,22 +60,21 @@ TEST(UnitTests, SubjectDiesEarly) {
 }
 
 TEST(UnitTests, ObserverDiesEarlyWithMemory) {
-  csari::Subject<int> *ptrSubject = nullptr;
-  auto senderThread = std::thread([&ptrSubject] {
-    auto subject = std::make_unique<csari::Subject<int>>();
+  auto subject = std::make_unique<csari::Subject<int>>();
+  auto senderThread = std::thread([&subject] {
     subject->setMemorySize(2);
-    ptrSubject = subject.get();
     for (auto i = 0; i < 10; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
-      ptrSubject->next(i);
+      subject->next(i);
       std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
+    subject.reset();
     std::cout << "[Sender] Closed\n";
   });
-  auto receiverThread = std::thread{[&ptrSubject] {
+  auto receiverThread = std::thread{[ptrSubject = subject.get()] {
     std::this_thread::sleep_for(std::chrono::milliseconds{50});
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int value) {
+    auto subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
     std::this_thread::sleep_for(std::chrono::milliseconds{25});
@@ -92,22 +89,22 @@ TEST(UnitTests, ObserverDiesEarlyWithMemory) {
 }
 
 TEST(UnitTests, SubjectDiesEarlyWithMemory) {
-  csari::Subject<int> *ptrSubject = nullptr;
-  auto senderThread = std::thread([&ptrSubject] {
-    auto subject = std::make_unique<csari::Subject<int>>();
+  auto subject = std::make_unique<csari::Subject<int>>();
+
+  auto senderThread = std::thread([&subject] {
     subject->setMemorySize(2);
-    ptrSubject = subject.get();
     for (auto i = 0; i < 10; i += 1) {
       std::cout << "[Sender] Sent " << i << '\n';
-      ptrSubject->next(i);
+      subject->next(i);
       std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
+    subject.reset();
     std::cout << "[Sender] Closed\n";
   });
-  auto receiverThread = std::thread{[&ptrSubject] {
+  auto receiverThread = std::thread{[ptrSubject = subject.get()] {
     std::this_thread::sleep_for(std::chrono::milliseconds{20});
     std::cout << "[Receiver] Subscribed\n";
-    auto subscription = ptrSubject->subscribe([](int value) {
+    auto subscription = ptrSubject->subscribe([](int const value) {
       std::cout << "[Receiver] Received " << value << '\n';
     });
     std::this_thread::sleep_for(std::chrono::milliseconds{20});
@@ -122,35 +119,35 @@ TEST(UnitTests, SubjectDiesEarlyWithMemory) {
 }
 
 TEST(UnitTests, streu) {
-  csari::Subject<int> s;
-  bool sub1Triggered = false, sub2Triggered = false, sub3Triggered = false;
-  csari::Subscription sub1 = s.subscribe([&t = sub1Triggered](int i) {
+  auto subject = csari::Subject<int>{};
+  auto sub1Triggered = false, sub2Triggered = false, sub3Triggered = false;
+  auto sub1 = subject.subscribe([&t = sub1Triggered](int const i) {
     t = true;
     std::cout << "sub1(" << i << ")\n";
   });
-  csari::Subscription sub2 = s.subscribe([&t = sub2Triggered](int i) {
+  auto const sub2 = subject.subscribe([&t = sub2Triggered](int const i) {
     t = true;
     std::cout << "sub2(" << i << ")\n";
   });
   sub1.reset();
-  csari::Subscription sub3 = s.subscribe([&t = sub3Triggered](int i) {
+  auto const sub3 = subject.subscribe([&t = sub3Triggered](int const i) {
     t = true;
     std::cout << "sub3(" << i << ")\n";
   });
-  s.next(42);
+  subject.next(42);
   EXPECT_FALSE(sub1Triggered);
   EXPECT_TRUE(sub2Triggered);
   EXPECT_TRUE(sub3Triggered);
 }
 
 TEST(UnitTests, voip_geek) {
-  csari::Subject<int> s;
-  s.setMemorySize(3);
-  s.next(0).next(1).next(2).next(3);
-  s.setMemorySize(2);
-  std::array<bool, 4> triggers{{false, false, false, false}};
-  csari::Subscription sub1 =
-      s.subscribe([&triggers](int i) { triggers.at(i) = true; });
+  auto subject = csari::Subject<int>{};
+  subject.setMemorySize(3);
+  subject.next(0).next(1).next(2).next(3);
+  subject.setMemorySize(2);
+  auto triggers = std::array{false, false, false, false};
+  auto sub1 =
+      subject.subscribe([&triggers](int const i) { triggers.at(i) = true; });
   EXPECT_FALSE(triggers.at(0));
   EXPECT_FALSE(triggers.at(1));
   EXPECT_TRUE(triggers.at(2));
@@ -158,28 +155,28 @@ TEST(UnitTests, voip_geek) {
 }
 
 TEST(UnitTests, voidCall) {
-  csari::Subject<void> s;
-  bool triggered = false;
-  csari::Subscription sub1 = s.subscribe([&triggered] { triggered = true; });
+  auto subject = csari::Subject<void>{};
+  auto triggered = false;
+  auto const sub1 = subject.subscribe([&triggered] { triggered = true; });
   EXPECT_FALSE(triggered);
-  s.next();
+  subject.next();
   EXPECT_TRUE(triggered);
 }
 
 TEST(UnitTests, unsubscribeOnCallback) {
-  csari::Subject<void> s;
-  bool triggered = false;
-  csari::Subscription sub1 = s.subscribe([&triggered] { triggered = true; });
-  csari::Subscription sub2 = s.subscribe([&sub1] { sub1.reset(); });
+  auto subject = csari::Subject<void>{};
+  auto triggered = false;
+  auto sub1 = subject.subscribe([&triggered] { triggered = true; });
+  auto const sub2 = subject.subscribe([&sub1] { sub1.reset(); });
   EXPECT_FALSE(triggered);
-  s.next();
+  subject.next();
   EXPECT_TRUE(triggered);
 }
 
 TEST(UnitTests, observableLifeTimeTests) {
   auto const observable = [] {
-    csari::Subject<int> s;
-    auto observable = s.asObservable();
+    auto subject = csari::Subject<int>{};
+    auto observable = subject.asObservable();
     EXPECT_TRUE(observable.isAlive());
     return observable;
   }();
@@ -187,28 +184,28 @@ TEST(UnitTests, observableLifeTimeTests) {
 }
 
 TEST(UnitTests, observableSubscriptionTests1) {
-  csari::Subject<int> s;
-  auto o = s.asObservable();
-  bool triggered = false;
+  auto subject = csari::Subject<int>{};
+  auto o = subject.asObservable();
+  auto triggered = false;
   auto sub1 = o.subscribe([&triggered](int) { triggered = true; });
-  auto sub2 = o.subscribe([&sub1](int) { sub1.reset(); });
+  auto const sub2 = o.subscribe([&sub1](int) { sub1.reset(); });
   EXPECT_FALSE(triggered);
-  s.next(1);
+  subject.next(1);
   EXPECT_TRUE(triggered);
 }
 
 TEST(UnitTests, observableShallowCopyTests1) {
   auto s1 = std::make_unique<csari::Subject<int>>();
   auto s2 = s1->share();
-  auto o1 = s1->asObservable();
+  auto const o1 = s1->asObservable();
   s1.reset();
   // s2 is completely functional and o1 is still connected to s2
   auto o11 = o1.share();
   auto o2 = s2.asObservable();
   auto o21 = o2.share();
-  bool triggered = false;
+  auto triggered = false;
   auto sub1 = o11.subscribe([&triggered](int) { triggered = true; });
-  auto sub2 = o21.subscribe([&sub1](int) { sub1.reset(); });
+  auto const sub2 = o21.subscribe([&sub1](int) { sub1.reset(); });
   EXPECT_FALSE(triggered);
   s2.share().next(1);
   EXPECT_TRUE(triggered);
@@ -220,9 +217,9 @@ TEST(UnitTests, voidMemoryTests) {
   for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
     subject.next();
   }
-  class SimpleCounter {
+  class SimpleCounter final {
    public:
-    SimpleCounter(csari::Subject<void> &subject)
+    explicit SimpleCounter(csari::Subject<void> &subject)
         : counter{0}, sub(subject.subscribe([this] { ++counter; })) {}
     int operator()() const { return counter; }
 

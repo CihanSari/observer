@@ -30,10 +30,10 @@ struct Invokable<void(Args...)> final {
   // and isn't an Invokable itself
   template <class F, std::enable_if_t<
                          !std::is_same<std::decay_t<F>, Invokable>{}, int> = 0>
-
   Invokable(F &&f)
       : Invokable(observerInternal::EmplaceAs<std::decay_t<F>>{},
                   std::forward<F>(f)) {}
+
   // emplacement construct using the EmplaceAs tag type:
   template <class F, class... FArgs>
   Invokable(observerInternal::EmplaceAs<F>, FArgs &&... functionArgs) {
@@ -87,7 +87,7 @@ struct SubscriptionCleanUp final {
   ~SubscriptionCleanUp() {
     if (auto d = weakD.lock()) {
       // Subject is still alive, we should unsubscribe
-      auto const lock = std::lock_guard(d->m_mutex);
+      auto const lock = std::lock_guard{d->m_mutex};
       auto const it = d->m_map.find(idx);
       if (it != d->m_map.end()) {
         d->m_map.erase(it);
@@ -118,7 +118,7 @@ struct ObserverCore final {
 
   template <class U = T, EnableIfNotVoid<U>...>
   void setMemorySize(std::size_t const nMemory) {
-    auto const lock = std::lock_guard<std::mutex>(m_mutex);
+    auto const lock = std::lock_guard{m_mutex};
     m_nMemory = nMemory;
     auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
     while (memoryQue.size() > m_nMemory) {
@@ -136,7 +136,7 @@ struct ObserverCore final {
   template <class U = T, EnableIfNotVoid<U>...>
   void next(U value) {
     auto callbacks = [&] {
-      auto const lock = std::lock_guard<std::mutex>(m_mutex);
+      auto const lock = std::lock_guard{m_mutex};
       if (m_nMemory > 0) {
         auto &memory = std::any_cast<std::deque<T> &>(m_memory);
         if (memory.size() == m_nMemory) {
@@ -165,8 +165,8 @@ struct ObserverCore final {
   }
 
   template <class U = T, EnableIfVoid<U>...>
-  void setMemorySize(std::size_t nMemory) {
-    auto const lock = std::lock_guard<std::mutex>(m_mutex);
+  void setMemorySize(std::size_t const nMemory) {
+    auto const lock = std::lock_guard{m_mutex};
     m_nMemory = nMemory;
     auto const memorySize = std::any_cast<std::size_t &>(m_memory);
     if (memorySize > m_nMemory) {
@@ -185,7 +185,7 @@ struct ObserverCore final {
   template <class U = T, EnableIfVoid<U>...>
   void next() {
     auto callbacks = [&] {
-      auto const lock = std::lock_guard<std::mutex>(m_mutex);
+      auto const lock = std::lock_guard{m_mutex};
       auto &memory = std::any_cast<std::size_t &>(m_memory);
       if (memory < m_nMemory) {
         ++memory;
@@ -206,7 +206,7 @@ struct ObserverCore final {
                                 FCallback callback) {
     // Access shared elements
     auto const idxSubscription = [&] {
-      auto lock = std::lock_guard<std::mutex>(d->m_mutex);
+      auto lock = std::lock_guard{d->m_mutex};
       auto const idx = d->m_callbackCounter++;
       d->m_map.emplace(idx, callback);
       return idx;
