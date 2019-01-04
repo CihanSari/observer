@@ -19,25 +19,18 @@ using EnableIfNotVoid =
 template <typename U>
 using EnableIfVoid =
     typename std::enable_if<std::is_same<U, void>::value>::type;
-template <class T>
-struct EmplaceAs final {};
 }  // namespace observerInternal
 template <class... Args>
 struct Invokable<void(Args...)> final {
   Invokable() = default;
 
-  // implicitly create from a type that can be compatibly invoked
-  // and isn't an Invokable itself
-  template <class F, std::enable_if_t<
-                         !std::is_same<std::decay_t<F>, Invokable>{}, int> = 0>
-  Invokable(F &&f)
-      : Invokable(observerInternal::EmplaceAs<std::decay_t<F>>{},
-                  std::forward<F>(f)) {}
-
-  // emplacement construct using the EmplaceAs tag type:
-  template <class F, class... FArgs>
-  Invokable(observerInternal::EmplaceAs<F>, FArgs &&... functionArgs) {
-    rebind<F>(std::forward<FArgs>(functionArgs)...);
+  template <class F>
+  Invokable(F f) {
+    m_ptr = std::move(f);
+    // m_invoke will remember type of lambda to execute it
+    m_invoke = [](std::any const &pf, Args... args) {
+      std::any_cast<F>(pf)(std::forward<Args>(args)...);
+    };
   }
 
   // invoker
@@ -53,16 +46,6 @@ struct Invokable<void(Args...)> final {
 
   // test if it is non-empty:
   explicit operator bool() const { return m_ptr.has_value(); }
-
-  // change what the invokable contains:
-  template <class F, class... FArgs>
-  void rebind(FArgs &&... functionArgs) {
-    m_ptr = std::make_any<F>(std::forward<FArgs>(functionArgs)...);
-    // m_invoke will remember type of lambda to execute it
-    m_invoke = [](std::any const &pf, Args... args) {
-      std::any_cast<F>(pf)(std::forward<Args>(args)...);
-    };
-  }
 
  private:
   // storage for the invokable and an invoker function pointer:
