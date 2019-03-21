@@ -20,11 +20,12 @@ set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_BINARY_DIR}/googletest-src"
                  "${CMAKE_BINARY_DIR}/googletest-build")
 
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
 # Now simply link against gtest or gtest_main as needed. Eg
 add_executable(${testcase} 
-src/${testcase}.cpp
-../observer/include/csari/observer.hpp)
+src/${testcase}.cpp)
 target_link_libraries(${testcase} gtest_main csari_observer)
 add_test(NAME ${testcase}_test COMMAND ${testcase})
+
+# Set up project folders
+set_target_properties(gmock gmock_main gtest gtest_main PROPERTIES FOLDER 3rdParty)
+set_target_properties(${testcase} PROPERTIES FOLDER Tests)
