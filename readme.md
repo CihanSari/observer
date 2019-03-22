@@ -4,19 +4,19 @@ Single header only, asynchronous observer structure. Connection is broken when s
 
 # How to use
 
-Add `observer/include/csari/observer.hpp` to your project.
+Add the header `observer/include/csari/observer.hpp` to your project.
 
 ## Example
 ```cpp
-csari::Subject<int> subject;
+auto subject = csari::Subject<int>{};
 auto const subscription = subject.subscribe(
   [](int const value) { 
     // Do something... 
   });
-subject.next(42);
+subject << 42;
 ```
 
-More examples are in unit tests `test/src/unit.cpp`.
+More uses are in unit tests `test/src/unit.cpp`.
 
 # Caution
 Callback functions are called on the sender's thread; i.e. this library does not provide an event loop. If the sender can be in a different thread, please ensure that callback functions are thread-safe.

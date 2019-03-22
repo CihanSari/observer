@@ -63,11 +63,15 @@ struct ObserverCore final {
   // number of listeners out there
   std::size_t m_callbackCounter{0u};
 
+  // Constructor (allocator) if type is not void
   template <class U = T, EnableIfNotVoid<U>...>
-  void makeMemory() {
-    m_memory = std::deque<T>{};
-  }
+  ObserverCore() : m_memory(std::deque<T>{}) {}
 
+  // Constructor (allocator) if type is void
+  template <class U = T, EnableIfVoid<U>...>
+  ObserverCore() : m_memory(std::size_t{0}) {}
+
+  // memory size setter if type is not void
   template <class U = T, EnableIfNotVoid<U>...>
   void setMemorySize(std::size_t const nMemory) {
     auto const lock = std::lock_guard{m_mutex};
@@ -82,6 +86,18 @@ struct ObserverCore final {
     }
   }
 
+  // memory size setter if type is void
+  template <class U = T, EnableIfVoid<U>...>
+  void setMemorySize(std::size_t const nMemory) {
+    auto const lock = std::lock_guard{m_mutex};
+    m_nMemory = nMemory;
+    auto const memorySize = std::any_cast<std::size_t &>(m_memory);
+    if (memorySize > m_nMemory) {
+      m_memory = m_nMemory;
+    }
+  }
+
+  // memory callback if type is not void
   template <class U = T, EnableIfNotVoid<U>...>
   void callbackFromMemory(FCallback &callback) {
     auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
@@ -89,6 +105,16 @@ struct ObserverCore final {
                   [&callback](T instance) { callback(std::move(instance)); });
   }
 
+  // memory callback if type is void
+  template <class U = T, EnableIfVoid<U>...>
+  void callbackFromMemory(FCallback &callback) {
+    auto const &memorySize = std::any_cast<std::size_t &>(m_memory);
+    for (auto i = std::size_t{0}; i < memorySize; ++i) {
+      callback();
+    }
+  }
+
+  // Push into the memory if type is not void
   template <class U = T, EnableIfNotVoid<U>...>
   void next(U value) {
     auto callbacks = [&] {
@@ -115,29 +141,7 @@ struct ObserverCore final {
     }
   }
 
-  template <class U = T, EnableIfVoid<U>...>
-  void makeMemory() {
-    m_memory = std::size_t{0};
-  }
-
-  template <class U = T, EnableIfVoid<U>...>
-  void setMemorySize(std::size_t const nMemory) {
-    auto const lock = std::lock_guard{m_mutex};
-    m_nMemory = nMemory;
-    auto const memorySize = std::any_cast<std::size_t &>(m_memory);
-    if (memorySize > m_nMemory) {
-      m_memory = m_nMemory;
-    }
-  }
-
-  template <class U = T, EnableIfVoid<U>...>
-  void callbackFromMemory(FCallback &callback) {
-    auto const &memorySize = std::any_cast<std::size_t &>(m_memory);
-    for (auto i = std::size_t{0}; i < memorySize; ++i) {
-      callback();
-    }
-  }
-
+  // Push into the memory if type is void
   template <class U = T, EnableIfVoid<U>...>
   void next() {
     auto callbacks = [&] {
@@ -155,11 +159,11 @@ struct ObserverCore final {
     std::for_each(std::execution::seq, callbacks.begin(), callbacks.end(),
                   [](FCallback &callback) { callback(); });
   }
-
-  ObserverCore() { makeMemory<T>(); }
 };
+
 // Acts as a scope-guard. It will unsubscribe when the object is discarded
-// (out of scope) or manually released.
+// (out of scope) or manually released. Unique per subscription. Shared to the
+// caller with shared_ptr to keep subscription alive in different scopes.
 struct SubscriptionCore final {
   template <typename T>
   SubscriptionCore(std::size_t const idx,
@@ -185,10 +189,13 @@ struct SubscriptionCore final {
   Invokable<void()> unsubscribe;
 };
 }  // namespace observerInternal
+
 // Subscription can be copied and shared around. Callbacks will continue until
 // last copy is removed.
 using Subscription = std::shared_ptr<observerInternal::SubscriptionCore>;
 namespace observerInternal {
+
+// Subscription helper
 template <typename T>
 [[nodiscard]] auto subscribe(std::shared_ptr<ObserverCore<T>> d,
                              typename ObserverCore<T>::FCallback callback)
@@ -200,8 +207,9 @@ template <typename T>
     d->m_map.emplace(idx, callback);
     return idx;
   }();
-  // Perform callbacks without any lock
+  // Perform cached callbacks without any lock
   d->callbackFromMemory(callback);
+  // Return subscription object
   return std::make_shared<SubscriptionCore>(
       idxSubscription, std::weak_ptr<ObserverCore<T>>{std::move(d)});
 }
@@ -243,7 +251,8 @@ class Subject final {
  public:
   using FCallback = typename ObserverCore::FCallback;
   Subject() = default;
-  // Keep the returned subscription to keep receiving callbacks
+
+  // Store the returned subscription to receive further callbacks
   [[nodiscard]] auto subscribe(FCallback &&callback) -> Subscription {
     return observerInternal::subscribe(d, std::forward<FCallback>(callback));
   }
@@ -256,15 +265,30 @@ class Subject final {
 
   auto share() const -> Subject { return Subject{d}; }
 
-  template <class U = T, observerInternal::EnableIfVoid<U>...>
-  auto next() -> Subject & {
-    d->next();
+  // Trigger subject if not void
+  template <class U = T, observerInternal::EnableIfNotVoid<U>...>
+  auto operator<<(U value) -> Subject & {
+    d->next(std::move(value));
     return *this;
   }
 
+  // Trigger subject if not void
   template <class U = T, observerInternal::EnableIfNotVoid<U>...>
   auto next(U value) -> Subject & {
     d->next(std::move(value));
+    return *this;
+  }
+
+  // Trigger subject if void
+  template <class U = T, observerInternal::EnableIfVoid<U>...>
+  void operator()() {
+    d->next();
+  }
+
+  // Trigger subject if void
+  template <class U = T, observerInternal::EnableIfVoid<U>...>
+  auto next() -> Subject & {
+    d->next();
     return *this;
   }
 };

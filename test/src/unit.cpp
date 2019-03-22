@@ -256,3 +256,38 @@ TEST(UnitTests, voidMemoryTests) {
   EXPECT_EQ(fourthCallCounter(), 20);
   EXPECT_EQ(fifthCallCounter(), 0);
 }
+
+TEST(UnitTests, voidSubjectOperatorCallTests) {
+  auto constexpr nCallsToMake = 10;
+
+  auto subject = csari::Subject<void>{};
+  subject.setMemorySize(nCallsToMake);
+
+  auto callCounter = std::size_t{0};
+  auto const sub = subject.subscribe([&callCounter] { ++callCounter; });
+
+  for (auto i = std::size_t{0}; i < nCallsToMake; ++i) {
+    subject();
+  }
+
+  EXPECT_EQ(nCallsToMake, callCounter);
+}
+
+TEST(UnitTests, nonVoidSubjectOperatorCallTests) {
+  auto const cacheValues = std::array{std::rand(), std::rand(), std::rand(),
+                                      std::rand(), std::rand()};
+
+  auto subject = csari::Subject<int>{};
+  subject.setMemorySize(cacheValues.size());
+
+  auto returnedValues = std::vector<int>{};
+  returnedValues.reserve(cacheValues.size());
+
+  auto const sub = subject.subscribe(
+      [&returnedValues](int const val) { returnedValues.emplace_back(val); });
+  std::for_each(cacheValues.begin(), cacheValues.end(),
+                [&subject](int const val) { subject << val; });
+
+  EXPECT_TRUE(std::equal(cacheValues.begin(), cacheValues.end(),
+                         returnedValues.begin(), returnedValues.end()));
+}
