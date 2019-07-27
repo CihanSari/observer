@@ -12,7 +12,7 @@ execute_process(COMMAND "${CMAKE_COMMAND}" --build .
 # Prevent GoogleTest from overriding our compiler/linker options
 # when building with Visual Studio
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
+set(gtest_disable_pthreads OFF CACHE BOOL "" FORCE)
 
 # Add googletest directly to our build. This adds
 # the following targets: gtest, gtest_main, gmock

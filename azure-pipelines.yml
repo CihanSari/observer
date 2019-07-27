@@ -11,42 +11,39 @@ jobs:
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
-  - script: |
-      export CC=/usr/bin/clang
-      export CXX=/usr/bin/clang++
-      cmake $(Build.Repository.LocalPath)
+  - script: CC=/usr/bin/clang CXX=/usr/bin/clang++ cmake $(Build.Repository.LocalPath)      
     displayName: 'Configure and generate project'
 
   - script: cmake --build . --config Debug
     displayName: 'Build on debug'
 
-  - script: ctest -C Debug
+  - script: ctest -C Debug --output-on-failure
     displayName: 'Test on debug'
 
   - script: cmake --build . --config Release
     displayName: 'Build on release'
 
-  - script: ctest -C Release
+  - script: ctest -C Release --output-on-failure
     displayName: 'Test on release'
 
-- job: macOS
-  pool:
-    vmImage: 'macOS-10.14'
-  steps:
-  - script: cmake $(Build.Repository.LocalPath)
-    displayName: 'Configure and generate project'
+# - job: macOS
+#   pool:
+#     vmImage: 'macOS-10.14'
+#   steps:
+#   - script: cmake $(Build.Repository.LocalPath)
+#     displayName: 'Configure and generate project'
 
-  - script: cmake --build . --config Debug
-    displayName: 'Build on debug'
+#   - script: cmake --build . --config Debug
+#     displayName: 'Build on debug'
 
-  - script: ctest -C Debug
-    displayName: 'Test on debug'
+#   - script: ctest -C Debug --output-on-failure
+#     displayName: 'Test on debug'
 
-  - script: cmake --build . --config Release
-    displayName: 'Build on release'
+#   - script: cmake --build . --config Release
+#     displayName: 'Build on release'
 
-  - script: ctest -C Release
-    displayName: 'Test on release'
+#   - script: ctest -C Release --output-on-failure
+#     displayName: 'Test on release'
 
 - job: Windows
   pool:
@@ -58,11 +55,11 @@ jobs:
   - script: cmake --build . --config Debug
     displayName: 'Build on debug'
 
-  - script: ctest -C Debug
+  - script: ctest -C Debug --output-on-failure
     displayName: 'Test on debug'
 
   - script: cmake --build . --config Release
     displayName: 'Build on release'
 
-  - script: ctest -C Release
+  - script: ctest -C Release --output-on-failure
     displayName: 'Test on release'

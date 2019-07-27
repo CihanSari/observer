@@ -2,6 +2,7 @@
 
 #include <array>
 #include <csari/observer.hpp>
+#include <thread>
 
 TEST(UnitTests, ObserverDiesEarly) {
   using namespace std::chrono_literals;
@@ -299,4 +300,3 @@ TEST(UnitTests, nonVoidSubjectOperatorCallTests) {
   EXPECT_TRUE(std::equal(cacheValues.begin(), cacheValues.end(),
                          returnedValues.begin(), returnedValues.end()));
 }
-
