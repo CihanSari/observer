@@ -30,7 +30,7 @@ struct Invokable<void(Args...)> final {
   // implicitly create from a type that can be compatibly invoked
   // and isn't an Invokable itself
   template <class F>
-  Invokable(F f)
+  Invokable(F &&f)
       : m_ptr(std::move(f)), m_invoke([](std::any &pf, Args... args) {
           auto &fInternal = std::any_cast<F &>(pf);
           fInternal(std::forward<Args>(args)...);
@@ -102,7 +102,7 @@ struct ObserverCore final {
   void callbackFromMemory(FCallback &callback) {
     auto &memoryQue = std::any_cast<std::deque<T> &>(m_memory);
     std::for_each(std::execution::seq, memoryQue.cbegin(), memoryQue.cend(),
-                  [&callback](T instance) { callback(std::move(instance)); });
+                  [&callback](T const &instance) { callback(instance); });
   }
 
   // memory callback if type is void
@@ -114,30 +114,56 @@ struct ObserverCore final {
     }
   }
 
+  // Create a callbacks queue to be invoked after locks are released. Should be
+  // locked before call.
+  auto callbackQueue() -> std::vector<FCallback> {
+    auto vecCallbacks = std::vector<FCallback>(m_map.size());
+    std::transform(std::execution::par_unseq, m_map.cbegin(), m_map.cend(),
+                   vecCallbacks.begin(),
+                   [](auto const &pair) { return pair.second; });
+    return vecCallbacks;
+  }
+
+  // Appends the value to the memory. Should be locked before call.
+  template <class U = T, EnableIfNotVoid<U>...>
+  auto appendMemory(U &&value) -> U & {
+    auto &memory = std::any_cast<std::deque<T> &>(m_memory);
+    if (memory.size() == m_nMemory) {
+      memory.pop_front();
+    }
+    return memory.emplace_back(std::move(value));
+  }
+
+  // Appends the memory. Should be locked before call.
+  template <class U = T, EnableIfVoid<U>...>
+  void appendMemory() {
+    auto &memory = std::any_cast<std::size_t &>(m_memory);
+    if (memory < m_nMemory) {
+      ++memory;
+    }
+  }
+
   // Push into the memory if type is not void
   template <class U = T, EnableIfNotVoid<U>...>
-  void next(U value) {
+  void next(U &&value) {
+    // Create a callbacks queue to be invoked after locks are released
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
       if (m_nMemory > 0) {
-        auto &memory = std::any_cast<std::deque<T> &>(m_memory);
-        if (memory.size() == m_nMemory) {
-          memory.pop_front();
-        }
-        memory.emplace_back(value);
+        appendMemory(value);
       }
-      auto vecCallbacks = std::vector<FCallback>(m_map.size());
-      std::transform(std::execution::par_unseq, m_map.cbegin(), m_map.cend(),
-                     vecCallbacks.begin(),
-                     [](auto const &pair) { return pair.second; });
-      return vecCallbacks;
+      return callbackQueue();
     }();
+
+    // Now invoke all callbacks without any locks.
     if (!callbacks.empty()) {
       auto lastCallback = callbacks.back();
       callbacks.pop_back();
       std::for_each(std::execution::seq, callbacks.begin(), callbacks.end(),
                     [&value](FCallback &callback) { callback(value); });
-      lastCallback(std::move(value));
+
+      // Move the value to the last callback.
+      lastCallback(std::forward<U>(value));
     }
   }
 
@@ -167,7 +193,7 @@ struct ObserverCore final {
 struct SubscriptionCore final {
   template <typename T>
   SubscriptionCore(std::size_t const idx,
-                   std::weak_ptr<observerInternal::ObserverCore<T>> weakD)
+                   std::weak_ptr<observerInternal::ObserverCore<T>> &&weakD)
       : unsubscribe([weakD = std::move(weakD), idx] {
           if (auto const d = weakD.lock()) {
             // Subject is still alive, we should unsubscribe
@@ -197,7 +223,7 @@ namespace observerInternal {
 
 // Subscription helper
 template <typename T>
-[[nodiscard]] auto subscribe(std::shared_ptr<ObserverCore<T>> d,
+[[nodiscard]] auto subscribe(std::shared_ptr<ObserverCore<T>> &&d,
                              typename ObserverCore<T>::FCallback callback)
     -> Subscription {
   // Access shared elements via lock-guard
@@ -224,10 +250,15 @@ class Observable final {
   using FCallback = typename ObserverCore::FCallback;
 
   Observable() = default;
-  explicit Observable(std::weak_ptr<ObserverCore> data) : d(std::move(data)) {}
 
+  // Construct observable from a weak core.
+  explicit Observable(std::weak_ptr<ObserverCore> &&data)
+      : d(std::move(data)) {}
+
+  // Check if the core still exists.
   bool isAlive() const { return !d.expired(); }
 
+  // Subscribe to the core if it still exists, returns nullopt otherwise.
   [[nodiscard]] auto subscribe(FCallback &&callback)
       -> std::optional<Subscription> {
     if (auto s_d = d.lock()) {
@@ -238,14 +269,21 @@ class Observable final {
     }
   }
 
-  Observable share() const { return Observable{d}; }
+  // Create another observable with the same weak_ptr core.
+  Observable share() const {
+    return Observable{std::weak_ptr<ObserverCore>{d}};
+  }
 };
 
 template <typename T>
 class Subject final {
   using ObserverCore = observerInternal::ObserverCore<T>;
+
+  // Create a core
   std::shared_ptr<ObserverCore> d = std::make_shared<ObserverCore>();
-  explicit Subject(std::shared_ptr<ObserverCore> shallowCore)
+
+  // Construct from core.
+  explicit Subject(std::shared_ptr<ObserverCore> &&shallowCore)
       : d(std::move(shallowCore)) {}
 
  public:
@@ -254,28 +292,48 @@ class Subject final {
 
   // Store the returned subscription to receive further callbacks
   [[nodiscard]] auto subscribe(FCallback &&callback) -> Subscription {
-    return observerInternal::subscribe(d, std::forward<FCallback>(callback));
+    return observerInternal::subscribe(std::shared_ptr<ObserverCore>{d},
+                                       std::forward<FCallback>(callback));
   }
 
+  // Number of triggers stored for new subscribers
   void setMemorySize(std::size_t const nMemory) { d->setMemorySize(nMemory); }
 
+  // Create a sharable shallow observable. Points to the same core.
   [[nodiscard]] auto asObservable() const -> Observable<T> {
     return Observable<T>{d};
   }
 
-  auto share() const -> Subject { return Subject{d}; }
+  // Create a sharable shallow subject. Both subjects point to the same core.
+  auto share() const -> Subject {
+    return Subject{std::shared_ptr<ObserverCore>{d}};
+  }
 
   // Trigger subject if not void
   template <class U = T, observerInternal::EnableIfNotVoid<U>...>
-  auto operator<<(U value) -> Subject & {
-    d->next(std::move(value));
+  auto operator<<(U &&value) -> Subject & {
+    d->next(std::forward<U>(value));
     return *this;
   }
 
   // Trigger subject if not void
   template <class U = T, observerInternal::EnableIfNotVoid<U>...>
-  auto next(U value) -> Subject & {
-    d->next(std::move(value));
+  auto next(U &&value) -> Subject & {
+    d->next(std::forward<U>(value));
+    return *this;
+  }
+
+  // Trigger subject if not void
+  template <class U = T, observerInternal::EnableIfNotVoid<U>...>
+  auto operator<<(U const &value) -> Subject & {
+    d->next(value);
+    return *this;
+  }
+
+  // Trigger subject if not void
+  template <class U = T, observerInternal::EnableIfNotVoid<U>...>
+  auto next(U const &value) -> Subject & {
+    d->next(value);
     return *this;
   }
 

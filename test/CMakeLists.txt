@@ -21,9 +21,11 @@ add_subdirectory("${CMAKE_BINARY_DIR}/googletest-src"
                  "${CMAKE_BINARY_DIR}/googletest-build")
 
 # Now simply link against gtest or gtest_main as needed. Eg
-add_executable(${testcase} 
-src/${testcase}.cpp)
+add_executable(${testcase} src/${testcase}.cpp)
+
 target_link_libraries(${testcase} gtest_main csari_observer)
+set_target_properties(${testcase} PROPERTIES CXX_STANDARD 17
+                                             CXX_STANDARD_REQUIRED ON)
 add_test(NAME ${testcase}_test COMMAND ${testcase})
 
 # Set up project folders
