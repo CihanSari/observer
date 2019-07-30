@@ -11,21 +11,27 @@ jobs:
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
-  - script: CC=/usr/bin/clang CXX=/usr/bin/clang++ cmake $(Build.Repository.LocalPath)      
+  - script: CC=/usr/bin/clang CXX=/usr/bin/clang++ cmake $(Build.Repository.LocalPath) -DCMAKE_INSTALL_PREFIX=$(Build.ArtifactStagingDirectory)
     displayName: 'Configure and generate project'
 
-  - script: cmake --build . --config Debug
+  - script: cmake --build . --config Debug --target install
     displayName: 'Build on debug'
 
   - script: ctest -C Debug --output-on-failure
     displayName: 'Test on debug'
 
-  - script: cmake --build . --config Release
+  - script: cmake --build . --config Release --target install
     displayName: 'Build on release'
 
   - script: ctest -C Release --output-on-failure
     displayName: 'Test on release'
 
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish linux artifacts'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'Observer'
+      publishLocation: 'Container'
 # - job: macOS
 #   pool:
 #     vmImage: 'macOS-10.14'
@@ -49,17 +55,24 @@ jobs:
   pool:
     vmImage: 'windows-2019'
   steps:
-  - script: cmake $(Build.Repository.LocalPath)
+  - script: cmake $(Build.Repository.LocalPath) -DCMAKE_INSTALL_PREFIX=$(Build.ArtifactStagingDirectory)
     displayName: 'Configure and generate project'
 
-  - script: cmake --build . --config Debug
+  - script: cmake --build . --config Debug --target install
     displayName: 'Build on debug'
 
   - script: ctest -C Debug --output-on-failure
     displayName: 'Test on debug'
 
-  - script: cmake --build . --config Release
+  - script: cmake --build . --config Release --target install
     displayName: 'Build on release'
 
   - script: ctest -C Release --output-on-failure
     displayName: 'Test on release'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish windows artifacts'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'Observer'
+      publishLocation: 'Container'

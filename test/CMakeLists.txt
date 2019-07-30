@@ -17,6 +17,10 @@ set(gtest_disable_pthreads OFF CACHE BOOL "" FORCE)
 # Add googletest directly to our build. This adds
 # the following targets: gtest, gtest_main, gmock
 # and gmock_main
+
+# Replace install() to do-nothing macro.
+macro(install)
+endmacro()
 add_subdirectory("${CMAKE_BINARY_DIR}/googletest-src"
                  "${CMAKE_BINARY_DIR}/googletest-build")
 
