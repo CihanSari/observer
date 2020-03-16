@@ -1,10 +1,12 @@
-#include "gtest/gtest.h"
+#define CATCH_CONFIG_MAIN
+#include "catch.hpp"
 
 #include <array>
+#include <iostream>
 #include <csari/observer.hpp>
 #include <thread>
 
-TEST(UnitTests, ObserverDiesEarly) {
+TEST_CASE("ObserverDiesEarly") {
   using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
@@ -33,7 +35,7 @@ TEST(UnitTests, ObserverDiesEarly) {
   }
 }
 
-TEST(UnitTests, SubjectDiesEarly) {
+TEST_CASE("SubjectDiesEarly") {
   using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
@@ -62,7 +64,7 @@ TEST(UnitTests, SubjectDiesEarly) {
   }
 }
 
-TEST(UnitTests, ObserverDiesEarlyWithMemory) {
+TEST_CASE("ObserverDiesEarlyWithMemory") {
   using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
@@ -92,7 +94,7 @@ TEST(UnitTests, ObserverDiesEarlyWithMemory) {
   }
 }
 
-TEST(UnitTests, SubjectDiesEarlyWithMemory) {
+TEST_CASE("SubjectDiesEarlyWithMemory") {
   using namespace std::chrono_literals;
   auto subject = std::make_unique<csari::Subject<int>>();
   auto senderThread = std::thread([&subject] {
@@ -122,7 +124,7 @@ TEST(UnitTests, SubjectDiesEarlyWithMemory) {
   }
 }
 
-TEST(UnitTests, streu) {
+TEST_CASE("streu") {
   auto subject = csari::Subject<int>{};
   auto sub1Triggered = false, sub2Triggered = false, sub3Triggered = false;
   auto sub1 = subject.subscribe([& t = sub1Triggered](int const i) {
@@ -139,12 +141,12 @@ TEST(UnitTests, streu) {
     std::cout << "sub3(" << i << ")\n";
   });
   subject.next(42);
-  EXPECT_FALSE(sub1Triggered);
-  EXPECT_TRUE(sub2Triggered);
-  EXPECT_TRUE(sub3Triggered);
+  REQUIRE(sub1Triggered == false);
+  REQUIRE(sub2Triggered == true);
+  REQUIRE(sub3Triggered == true);
 }
 
-TEST(UnitTests, voip_geek) {
+TEST_CASE("voip_geek") {
   auto subject = csari::Subject<int>{};
   subject.setMemorySize(3);
   subject.next(0).next(1).next(2).next(3);
@@ -152,53 +154,53 @@ TEST(UnitTests, voip_geek) {
   auto triggers = std::array{false, false, false, false};
   auto const sub1 =
       subject.subscribe([&triggers](int const i) { triggers.at(i) = true; });
-  EXPECT_FALSE(triggers.at(0));
-  EXPECT_FALSE(triggers.at(1));
-  EXPECT_TRUE(triggers.at(2));
-  EXPECT_TRUE(triggers.at(3));
+  REQUIRE(triggers.at(0) == false);
+  REQUIRE(triggers.at(1) == false);
+  REQUIRE(triggers.at(2) == true);
+  REQUIRE(triggers.at(3) == true);
 }
 
-TEST(UnitTests, voidCall) {
+TEST_CASE("voidCall") {
   auto subject = csari::Subject<void>{};
   auto triggered = false;
   auto const sub1 = subject.subscribe([&triggered] { triggered = true; });
-  EXPECT_FALSE(triggered);
+  REQUIRE(triggered == false);
   subject.next();
-  EXPECT_TRUE(triggered);
+  REQUIRE(triggered == true);
 }
 
-TEST(UnitTests, unsubscribeOnCallback) {
+TEST_CASE("unsubscribeOnCallback") {
   auto subject = csari::Subject<void>{};
   auto triggered = false;
   auto sub1 = subject.subscribe([&triggered] { triggered = true; });
   auto const sub2 = subject.subscribe([&sub1] { sub1.reset(); });
-  EXPECT_FALSE(triggered);
+  REQUIRE(triggered == false);
   subject.next();
-  EXPECT_TRUE(triggered);
+  REQUIRE(triggered == true);
 }
 
-TEST(UnitTests, observableLifeTimeTests) {
+TEST_CASE("observableLifeTimeTests") {
   auto const observable = [] {
     auto subject = csari::Subject<int>{};
     auto observable = subject.asObservable();
-    EXPECT_TRUE(observable.isAlive());
+    REQUIRE(observable.isAlive() == true);
     return observable;
   }();
-  EXPECT_FALSE(observable.isAlive());
+  REQUIRE(observable.isAlive() == false);
 }
 
-TEST(UnitTests, observableSubscriptionTests1) {
+TEST_CASE("observableSubscriptionTests1") {
   auto subject = csari::Subject<void>{};
   auto observable = subject.asObservable();
   auto triggered = false;
   auto sub1 = observable.subscribe([&triggered] { triggered = true; });
   auto const sub2 = observable.subscribe([&sub1] { sub1.reset(); });
-  EXPECT_FALSE(triggered);
+  REQUIRE(triggered == false);
   subject.next();
-  EXPECT_TRUE(triggered);
+  REQUIRE(triggered == true);
 }
 
-TEST(UnitTests, observableShallowCopyTests1) {
+TEST_CASE("observableShallowCopyTests1") {
   auto s1 = std::make_unique<csari::Subject<std::any>>();
   auto const s2 = s1->share();
   auto const o1 = s1->asObservable();
@@ -210,12 +212,12 @@ TEST(UnitTests, observableShallowCopyTests1) {
   auto triggered = false;
   auto sub1 = o11.subscribe([&triggered](auto) { triggered = true; });
   auto const sub2 = o21.subscribe([&sub1](auto) { sub1.reset(); });
-  EXPECT_FALSE(triggered);
+  REQUIRE(triggered == false);
   s2.share().next(std::any{});
-  EXPECT_TRUE(triggered);
+  REQUIRE(triggered == true);
 }
 
-TEST(UnitTests, voidMemoryTests) {
+TEST_CASE("voidMemoryTests") {
   auto subject = csari::Subject<int>{};
   subject.setMemorySize(30);
   for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
@@ -240,10 +242,10 @@ TEST(UnitTests, voidMemoryTests) {
   subject.setMemorySize(0);
   auto const fourthCallCounter = SimpleCounter{subject};
 
-  EXPECT_EQ(firstCallCounter(), 20);
-  EXPECT_EQ(secondCallCounter(), 10);
-  EXPECT_EQ(thirdCallCounter(), 5);
-  EXPECT_EQ(fourthCallCounter(), 0);
+  REQUIRE(firstCallCounter() == 20);
+  REQUIRE(secondCallCounter() == 10);
+  REQUIRE(thirdCallCounter() == 5);
+  REQUIRE(fourthCallCounter() == 0);
 
   for (auto i = std::size_t{0}; i < std::size_t{20}; i += 1) {
     subject.next(42);
@@ -251,14 +253,14 @@ TEST(UnitTests, voidMemoryTests) {
 
   auto const fifthCallCounter = SimpleCounter{subject};
 
-  EXPECT_EQ(firstCallCounter(), 40);
-  EXPECT_EQ(secondCallCounter(), 30);
-  EXPECT_EQ(thirdCallCounter(), 25);
-  EXPECT_EQ(fourthCallCounter(), 20);
-  EXPECT_EQ(fifthCallCounter(), 0);
+  REQUIRE(firstCallCounter() == 40);
+  REQUIRE(secondCallCounter() == 30);
+  REQUIRE(thirdCallCounter() == 25);
+  REQUIRE(fourthCallCounter() == 20);
+  REQUIRE(fifthCallCounter() == 0);
 }
 
-TEST(UnitTests, voidSubjectOperatorCallTests) {
+TEST_CASE("voidSubjectOperatorCallTests") {
   auto constexpr nCallsToMake = 10;
 
   auto subject = csari::Subject<void>{};
@@ -271,10 +273,10 @@ TEST(UnitTests, voidSubjectOperatorCallTests) {
     subject.next();
   }
 
-  EXPECT_EQ(nCallsToMake, callCounter);
+  REQUIRE(nCallsToMake == callCounter);
 }
 
-TEST(UnitTests, nonVoidSubjectOperatorCallTests) {
+TEST_CASE("nonVoidSubjectOperatorCallTests") {
   auto const cacheValues = std::array{std::rand(), std::rand(), std::rand(),
                                       std::rand(), std::rand()};
 
@@ -297,6 +299,6 @@ TEST(UnitTests, nonVoidSubjectOperatorCallTests) {
       [&returnedValues](int const val) { returnedValues.emplace_back(val); });
 
   // Check if the contets are the same.
-  EXPECT_TRUE(std::equal(cacheValues.begin(), cacheValues.end(),
-                         returnedValues.begin(), returnedValues.end()));
+  REQUIRE(std::equal(cacheValues.begin(), cacheValues.end(),
+                         returnedValues.begin(), returnedValues.end()) == true);
 }

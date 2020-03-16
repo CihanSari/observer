@@ -5,6 +5,5 @@ project(observer)
 ## create and configure the unit test target
 ##
 enable_testing()
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 add_subdirectory(observer)
 add_subdirectory(test)
