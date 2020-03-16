@@ -4,18 +4,11 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <unordered_map>
 #include <vector>
 
 namespace csari {
 namespace ob_internal {
-template <typename U>
-using EnableIfNotVoid =
-    typename std::enable_if<!std::is_same<U, void>::value>::type;
-template <typename U>
-using EnableIfVoid =
-    typename std::enable_if<std::is_same<U, void>::value>::type;
 
 template <typename T>
 struct ObserverMemoryType {
@@ -198,11 +191,11 @@ class ObservableBase final {
   bool isAlive() const { return !d.expired(); }
 
   // Subscribe to the core if it still exists, returns nullopt otherwise.
-  [[nodiscard]] auto subscribe(F &&callback) -> std::optional<Subscription> {
+  [[nodiscard]] auto subscribe(F &&callback) -> Subscription {
     if (auto s_d = d.lock()) {
       return ob_internal::subscribe(std::move(s_d), std::forward<F>(callback));
     } else {
-      return std::nullopt;
+      return nullptr;
     }
   }
 
@@ -243,14 +236,12 @@ class SubjectBase final {
     return SubjectBase{std::shared_ptr<ObserverCore>{d}};
   }
 
-  // Trigger subject if not void
-  template <class U = T>
+  template <typename U>
   auto operator<<(U &&value) -> SubjectBase & {
     d->next(std::forward<U>(value));
     return *this;
   }
 
-  // Trigger subject if not void
   template <typename ...Args>
   auto next(Args&&... value) -> SubjectBase & {
     static_assert(sizeof...(Args) < 2, "next accept zero or one parameter");
