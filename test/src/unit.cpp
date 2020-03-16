@@ -211,7 +211,7 @@ TEST(UnitTests, observableShallowCopyTests1) {
   auto sub1 = o11.subscribe([&triggered](auto) { triggered = true; });
   auto const sub2 = o21.subscribe([&sub1](auto) { sub1.reset(); });
   EXPECT_FALSE(triggered);
-  s2.share().next({});
+  s2.share().next(std::any{});
   EXPECT_TRUE(triggered);
 }
 
@@ -268,7 +268,7 @@ TEST(UnitTests, voidSubjectOperatorCallTests) {
   auto const sub = subject.subscribe([&callCounter] { ++callCounter; });
 
   for (auto i = std::size_t{0}; i < nCallsToMake; ++i) {
-    subject();
+    subject.next();
   }
 
   EXPECT_EQ(nCallsToMake, callCounter);

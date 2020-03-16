@@ -50,40 +50,32 @@ struct ObserverCore final {
   std::size_t m_callbackCounter{0u};
 
   // memory size setter if type is not void
-  template <class U = T, EnableIfNotVoid<U>...>
   void setMemorySize(std::size_t const nMemory) {
     auto const lock = std::lock_guard{m_mutex};
     m_nMemory = nMemory;
-    auto const currentMemorySize = m_memory.size();
-    if (currentMemorySize > m_nMemory) {
-      auto const nMemoryToFree = currentMemorySize - m_nMemory;
-      // Should we move these items outside and let them get deconstructed
-      // without the lock guard?
-      m_memory.erase(m_memory.begin(), m_memory.begin() + nMemoryToFree);
+    if constexpr (!std::is_same_v<T, void>) {
+      auto const currentMemorySize = m_memory.size();
+      if (currentMemorySize > m_nMemory) {
+        auto const nMemoryToFree = currentMemorySize - m_nMemory;
+        // Should we move these items outside and let them get deconstructed
+        // without the lock guard?
+	m_memory.erase(m_memory.begin(), m_memory.begin() + nMemoryToFree);
+      }
+    } else {
+      if (m_memory > m_nMemory) {
+        m_memory = m_nMemory;
+      }
     }
   }
 
-  // memory size setter if type is void
-  template <class U = T, EnableIfVoid<U>...>
-  void setMemorySize(std::size_t const nMemory) {
-    auto const lock = std::lock_guard{m_mutex};
-    m_nMemory = nMemory;
-    if (m_memory > m_nMemory) {
-      m_memory = m_nMemory;
-    }
-  }
-  // memory callback if type is not void
-  template <class U = T, EnableIfNotVoid<U>...>
   void callbackFromMemory(F &callback) {
-    static_cast<void>(
-        std::for_each(m_memory.cbegin(), m_memory.cend(), callback));
-  }
-
-  // memory callback if type is void
-  template <class U = T, EnableIfVoid<U>...>
-  void callbackFromMemory(F &callback) {
-    for (auto i = std::size_t{0}; i < m_memory; ++i) {
-      callback();
+    if constexpr (!std::is_same_v<T, void>) {
+      static_cast<void>(
+          std::for_each(m_memory.cbegin(), m_memory.cend(), callback));
+    } else {
+      for (auto i = std::size_t{0}; i < m_memory; ++i) {
+        callback();
+      }
     }
   }
 
@@ -96,63 +88,44 @@ struct ObserverCore final {
     return vecCallbacks;
   }
 
-  // Appends the value to the memory. Should be locked before call.
-  template <class U = T, EnableIfNotVoid<U>...>
-  auto appendMemory(U &&value) -> U & {
-    if (m_memory.size() == m_nMemory) {
-      m_memory.pop_front();
-    }
-    return m_memory.emplace_back(std::move(value));
-  }
-
-  // Appends the memory. Should be locked before call.
-  template <class U = T, EnableIfVoid<U>...>
-  void appendMemory() {
-    if (m_memory < m_nMemory) {
-      ++m_memory;
+  template <typename ...Args>
+  auto appendMemory(Args&&... value) {
+    static_assert(sizeof...(Args) < 2, "appendMemory accept zero or one parameter");
+    if constexpr (sizeof...(Args) == 1) {
+      if (m_memory.size() == m_nMemory) {
+        m_memory.pop_front();
+      }
+      return m_memory.emplace_back(std::forward<Args>(value)...);
+    } else if constexpr (std::is_same_v<T, void>) {
+      if (m_memory < m_nMemory) {
+        ++m_memory;
+      }
     }
   }
 
-  // Push into the memory if type is not void
-  template <class U = T, EnableIfNotVoid<U>...>
-  void next(U &&value) {
-    // Create a callbacks queue to be invoked after locks are released
+  template <class U = T, typename ...Args>
+  void next(Args&&... value) {
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
-      if (m_nMemory > 0) {
-        appendMemory(value);
+      if constexpr (sizeof...(Args) == 1) {
+        if (m_nMemory > 0) {
+          appendMemory(std::forward<Args>(value)...);
+        }
+      } else if constexpr (std::is_same_v<U, void>) {
+        if (m_memory < m_nMemory) {
+          ++m_memory;
+        }
+      } else {
+        static_assert(true, "Don't meet requirement");
       }
       return callbackQueue();
     }();
 
     // Now invoke all callbacks without any locks.
-    if (!callbacks.empty()) {
-      auto lastCallback = callbacks.back();
-      callbacks.pop_back();
-      std::for_each(callbacks.begin(), callbacks.end(),
-                    [&value](F &callback) { callback(value); });
-
-      // Move the value to the last callback.
-      lastCallback(std::forward<U>(value));
-    }
-  }
-
-  // Push into the memory if type is void
-  template <class U = T, EnableIfVoid<U>...>
-  void next() {
-    auto callbacks = [&] {
-      auto const lock = std::lock_guard{m_mutex};
-      if (m_memory < m_nMemory) {
-        ++m_memory;
-      }
-      auto vecCallbacks = std::vector<F>(m_map.size());
-      std::transform(m_map.cbegin(), m_map.cend(), vecCallbacks.begin(),
-                     [](auto const &pair) { return pair.second; });
-      return vecCallbacks;
-    }();
     std::for_each(callbacks.begin(), callbacks.end(),
-                  [](F &callback) { callback(); });
+                  [&](F &callback) { callback(std::forward<Args>(value)...); });
   }
+
 };
 
 // Acts as a scope-guard. It will unsubscribe when the object is discarded
@@ -271,43 +244,17 @@ class SubjectBase final {
   }
 
   // Trigger subject if not void
-  template <class U = T, ob_internal::EnableIfNotVoid<U>...>
+  template <class U = T>
   auto operator<<(U &&value) -> SubjectBase & {
     d->next(std::forward<U>(value));
     return *this;
   }
 
   // Trigger subject if not void
-  template <class U = T, ob_internal::EnableIfNotVoid<U>...>
-  auto next(U &&value) -> SubjectBase & {
-    d->next(std::forward<U>(value));
-    return *this;
-  }
-
-  // Trigger subject if not void
-  template <class U = T, ob_internal::EnableIfNotVoid<U>...>
-  auto operator<<(U const &value) -> SubjectBase & {
-    d->next(value);
-    return *this;
-  }
-
-  // Trigger subject if not void
-  template <class U = T, ob_internal::EnableIfNotVoid<U>...>
-  auto next(U const &value) -> SubjectBase & {
-    d->next(value);
-    return *this;
-  }
-
-  // Trigger subject if void
-  template <class U = T, ob_internal::EnableIfVoid<U>...>
-  void operator()() {
-    d->next();
-  }
-
-  // Trigger subject if void
-  template <class U = T, ob_internal::EnableIfVoid<U>...>
-  auto next() -> SubjectBase & {
-    d->next();
+  template <typename ...Args>
+  auto next(Args&&... value) -> SubjectBase & {
+    static_assert(sizeof...(Args) < 2, "next accept zero or one parameter");
+    d->next(std::forward<Args>(value)...);
     return *this;
   }
 };
