@@ -52,7 +52,7 @@ struct ObserverCore final {
         auto const nMemoryToFree = currentMemorySize - m_nMemory;
         // Should we move these items outside and let them get deconstructed
         // without the lock guard?
-	m_memory.erase(m_memory.begin(), m_memory.begin() + nMemoryToFree);
+        m_memory.erase(m_memory.begin(), m_memory.begin() + nMemoryToFree);
       }
     } else {
       if (m_memory > m_nMemory) {
@@ -81,9 +81,10 @@ struct ObserverCore final {
     return vecCallbacks;
   }
 
-  template <typename ...Args>
-  auto appendMemory(Args&&... value) {
-    static_assert(sizeof...(Args) < 2, "appendMemory accept zero or one parameter");
+  template <typename... Args>
+  auto appendMemory(Args &&... value) {
+    static_assert(sizeof...(Args) < 2,
+                  "appendMemory accepts maximum one parameter");
     if constexpr (sizeof...(Args) == 1) {
       if (m_memory.size() == m_nMemory) {
         m_memory.pop_front();
@@ -96,20 +97,20 @@ struct ObserverCore final {
     }
   }
 
-  template <class U = T, typename ...Args>
-  void next(Args&&... value) {
+  template <typename... Args>
+  void next(Args &&... value) {
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
       if constexpr (sizeof...(Args) == 1) {
         if (m_nMemory > 0) {
           appendMemory(std::forward<Args>(value)...);
         }
-      } else if constexpr (std::is_same_v<U, void>) {
+      } else if constexpr (std::is_same_v<T, void>) {
         if (m_memory < m_nMemory) {
           ++m_memory;
         }
       } else {
-        static_assert(true, "Don't meet requirement");
+        static_assert(true, "next accepts maximum one parameter");
       }
       return callbackQueue();
     }();
@@ -118,7 +119,6 @@ struct ObserverCore final {
     std::for_each(callbacks.begin(), callbacks.end(),
                   [&](F &callback) { callback(std::forward<Args>(value)...); });
   }
-
 };
 
 // Acts as a scope-guard. It will unsubscribe when the object is discarded
@@ -129,7 +129,7 @@ class SubscriptionBase final {
  public:
   using WeakO = std::weak_ptr<ObserverCore<T, F>>;
   SubscriptionBase(WeakO &&d, std::size_t const idx)
-      : m_weakD(std::forward<WeakO>(d)), m_idx(idx) {}
+      : m_weakD{std::forward<WeakO>(d)}, m_idx{idx} {}
   ~SubscriptionBase() {
     if (auto const d = m_weakD.lock()) {
       // Subject is still alive, we should unsubscribe
@@ -185,7 +185,7 @@ class ObservableBase final {
 
   // Construct observable from a weak core.
   explicit ObservableBase(std::weak_ptr<ObserverCore> &&data)
-      : d(std::move(data)) {}
+      : d{std::move(data)} {}
 
   // Check if the core still exists.
   bool isAlive() const { return !d.expired(); }
@@ -212,7 +212,7 @@ class SubjectBase final {
 
   // Construct from core.
   explicit SubjectBase(std::shared_ptr<ObserverCore> &&shallowCore)
-      : d(std::move(shallowCore)) {}
+      : d{std::move(shallowCore)} {}
 
  public:
   SubjectBase() = default;
@@ -236,15 +236,16 @@ class SubjectBase final {
     return SubjectBase{std::shared_ptr<ObserverCore>{d}};
   }
 
-  template <typename U>
-  auto operator<<(U &&value) -> SubjectBase & {
-    d->next(std::forward<U>(value));
+  template <typename... Args>
+  auto operator<<(Args &&... value) -> SubjectBase & {
+    static_assert(sizeof...(Args) < 2, "pipe operator accepts maximum one parameter");
+    d->next(std::forward<Args>(value)...);
     return *this;
   }
 
-  template <typename ...Args>
-  auto next(Args&&... value) -> SubjectBase & {
-    static_assert(sizeof...(Args) < 2, "next accept zero or one parameter");
+  template <typename... Args>
+  auto next(Args &&... value) -> SubjectBase & {
+    static_assert(sizeof...(Args) < 2, "next accepts maximum one parameter");
     d->next(std::forward<Args>(value)...);
     return *this;
   }
