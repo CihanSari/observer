@@ -1,7 +1,7 @@
 #pragma once
 #include <algorithm>
-#include <any>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -46,37 +46,38 @@ struct ObserverCore final {
   void setMemorySize(std::size_t const nMemory) {
     auto const lock = std::lock_guard{m_mutex};
     m_nMemory = nMemory;
-    if constexpr (!std::is_same_v<T, void>) {
-      auto const currentMemorySize = m_memory.size();
+    if constexpr (std::is_same_v<T, void>) {
+      if (m_memory > m_nMemory) {
+        m_memory = m_nMemory;
+      }
+    } else {
+      auto const currentMemorySize = size(m_memory);
       if (currentMemorySize > m_nMemory) {
         auto const nMemoryToFree = currentMemorySize - m_nMemory;
         // Should we move these items outside and let them get deconstructed
         // without the lock guard?
-        m_memory.erase(m_memory.begin(), m_memory.begin() + nMemoryToFree);
-      }
-    } else {
-      if (m_memory > m_nMemory) {
-        m_memory = m_nMemory;
+        m_memory.erase(begin(m_memory),
+                       std::next(begin(m_memory), nMemoryToFree));
       }
     }
   }
 
   void callbackFromMemory(F &callback) {
-    if constexpr (!std::is_same_v<T, void>) {
-      static_cast<void>(
-          std::for_each(m_memory.cbegin(), m_memory.cend(), callback));
-    } else {
+    if constexpr (std::is_same_v<T, void>) {
       for (auto i = std::size_t{0}; i < m_memory; ++i) {
         callback();
       }
+    } else {
+      std::for_each(cbegin(m_memory), cend(m_memory), callback);
     }
   }
 
   // Create a callbacks queue to be invoked after locks are released. Should be
   // locked before call.
   auto callbackQueue() -> std::vector<F> {
-    auto vecCallbacks = std::vector<F>(m_map.size());
-    std::transform(m_map.cbegin(), m_map.cend(), vecCallbacks.begin(),
+    auto vecCallbacks = std::vector<F>{};
+    vecCallbacks.reserve(size(m_map));
+    std::transform(cbegin(m_map), cend(m_map), back_inserter(vecCallbacks),
                    [](auto const &pair) { return pair.second; });
     return vecCallbacks;
   }
@@ -86,7 +87,7 @@ struct ObserverCore final {
     static_assert(sizeof...(Args) < 2,
                   "appendMemory accepts maximum one parameter");
     if constexpr (sizeof...(Args) == 1) {
-      if (m_memory.size() == m_nMemory) {
+      if (size(m_memory) == m_nMemory) {
         m_memory.pop_front();
       }
       return m_memory.emplace_back(std::forward<Args>(value)...);
@@ -116,7 +117,7 @@ struct ObserverCore final {
     }();
 
     // Now invoke all callbacks without any locks.
-    std::for_each(callbacks.begin(), callbacks.end(),
+    std::for_each(begin(callbacks), end(callbacks),
                   [&](F &callback) { callback(std::forward<Args>(value)...); });
   }
 };
@@ -238,7 +239,8 @@ class SubjectBase final {
 
   template <typename... Args>
   auto operator<<(Args &&... value) -> SubjectBase & {
-    static_assert(sizeof...(Args) < 2, "pipe operator accepts maximum one parameter");
+    static_assert(sizeof...(Args) < 2,
+                  "pipe operator accepts maximum one parameter");
     d->next(std::forward<Args>(value)...);
     return *this;
   }

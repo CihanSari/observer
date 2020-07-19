@@ -1,9 +1,9 @@
 #define CATCH_CONFIG_MAIN
-#include "catch.hpp"
-
+#include <any>
 #include <array>
-#include <iostream>
+#include <catch.hpp>
 #include <csari/observer.hpp>
+#include <iostream>
 #include <thread>
 
 TEST_CASE("ObserverDiesEarly") {
@@ -127,16 +127,16 @@ TEST_CASE("SubjectDiesEarlyWithMemory") {
 TEST_CASE("streu") {
   auto subject = csari::Subject<int>{};
   auto sub1Triggered = false, sub2Triggered = false, sub3Triggered = false;
-  auto sub1 = subject.subscribe([& t = sub1Triggered](int const i) {
+  auto sub1 = subject.subscribe([&t = sub1Triggered](int const i) {
     t = true;
     std::cout << "sub1(" << i << ")\n";
   });
-  auto const sub2 = subject.subscribe([& t = sub2Triggered](int const i) {
+  auto const sub2 = subject.subscribe([&t = sub2Triggered](int const i) {
     t = true;
     std::cout << "sub2(" << i << ")\n";
   });
   sub1.reset();
-  auto const sub3 = subject.subscribe([& t = sub3Triggered](int const i) {
+  auto const sub3 = subject.subscribe([&t = sub3Triggered](int const i) {
     t = true;
     std::cout << "sub3(" << i << ")\n";
   });
@@ -227,7 +227,7 @@ TEST_CASE("voidMemoryTests") {
    public:
     explicit SimpleCounter(csari::Subject<int>& subject)
         : counter{0},
-          sub(subject.subscribe([& counter = counter](auto) { ++counter; })) {}
+          sub(subject.subscribe([&counter = counter](auto) { ++counter; })) {}
     int operator()() const { return counter; }
 
    private:
@@ -281,24 +281,24 @@ TEST_CASE("nonVoidSubjectOperatorCallTests") {
                                       std::rand(), std::rand()};
 
   auto subject = csari::Subject<int>{};
-  subject.setMemorySize(cacheValues.size());
+  subject.setMemorySize(size(cacheValues));
 
   // Fill subject with junk values
-  for (auto i = std::size_t{0}; i < cacheValues.size(); ++i) {
+  for (auto i = std::size_t{0}; i < size(cacheValues); ++i) {
     subject << std::rand();
   }
 
   auto returnedValues = std::vector<int>{};
-  returnedValues.reserve(cacheValues.size());
+  returnedValues.reserve(size(cacheValues));
 
   // Refill subject with correct values
-  std::for_each(cacheValues.begin(), cacheValues.end(),
+  std::for_each(begin(cacheValues), end(cacheValues),
                 [&subject](int const val) { subject << val; });
 
   auto const sub = subject.subscribe(
       [&returnedValues](int const val) { returnedValues.emplace_back(val); });
 
   // Check if the contets are the same.
-  REQUIRE(std::equal(cacheValues.begin(), cacheValues.end(),
-                         returnedValues.begin(), returnedValues.end()) == true);
+  REQUIRE(std::equal(begin(cacheValues), end(cacheValues),
+                     begin(returnedValues), end(returnedValues)) == true);
 }

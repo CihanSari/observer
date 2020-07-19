@@ -7,9 +7,9 @@ if(NOT WIN32)
   set(THREADS_PREFER_PTHREAD_FLAG TRUE)
   find_package(Threads REQUIRED)
   target_link_libraries(${testcase} PUBLIC Threads::Threads)
-endif(WIN32)
+endif()
 
 set_target_properties(${testcase} PROPERTIES CXX_STANDARD 17
                                              CXX_STANDARD_REQUIRED ON)
 target_link_libraries(${testcase} PUBLIC csari_observer)
-add_test(NAME ${testcase}_test COMMAND ${testcase})
+target_include_directories(${testcase} PRIVATE src)
