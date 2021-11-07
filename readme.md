@@ -2,7 +2,7 @@
 
 Single header only, asynchronous observer structure. Connection is broken when subject or subscriber gets out of scope. Connection itself is thread-safe.
 
-[![Build Status](https://dev.azure.com/csari/Observer/_apis/build/status/CihanSari.observer?branchName=master)](https://dev.azure.com/csari/Observer/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://github.com/CihanSari/observer/actions/workflows/main.yml/badge.svg)](https://github.com/CihanSari/observer/actions/workflows/main.yml)
 
 # How to use
 
