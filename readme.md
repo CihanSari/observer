@@ -2,7 +2,7 @@
 
 Single header only, asynchronous observer structure. Connection is broken when subject or subscriber gets out of scope. Connection itself is thread-safe.
 
-[![Build Status](https://github.com/CihanSari/observer/actions/workflows/main.yml/badge.svg)](https://github.com/CihanSari/observer/actions/workflows/main.yml)
+[![Build Status](https://github.com/CihanSari/observer/actions/workflows/main.yml/badge.svg)](https://github.com/CihanSari/observer/actions/workflows/main.yml) [![CodeQL](https://github.com/CihanSari/observer/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/CihanSari/observer/actions/workflows/codeql-analysis.yml)
 
 # How to use
 
