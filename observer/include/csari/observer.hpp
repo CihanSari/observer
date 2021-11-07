@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -46,7 +47,7 @@ struct ObserverMemoryType<void> {
 
 // Generate a "unique" id per subscription to self-clean.
 auto getNextId() {
-  static std::atomic_size_t sNextId{};
+  static std::atomic<size_t> sNextId{};
   return ++sNextId;
 }
 
@@ -69,7 +70,7 @@ struct ObserverCore final {
   void setMemorySize(std::size_t const nMemory) {
     auto const lock = std::lock_guard{m_mutex};
     m_nMemory = nMemory;
-    if constexpr (std::is_same_v<ArgumentHelper::Container, void>) {
+    if constexpr (std::is_same_v<typename ArgumentHelper::Container, void>) {
       if (m_memory > m_nMemory) {
         m_memory = m_nMemory;
       }
@@ -86,13 +87,13 @@ struct ObserverCore final {
   }
 
   void callbackFromMemory(F &callback) {
-    if constexpr (std::is_same_v<ArgumentHelper::Container, void>) {
+    if constexpr (std::is_same_v<typename ArgumentHelper::Container, void>) {
       for (auto i = std::size_t{0}; i < m_memory; ++i) {
         callback();
       }
     } else {
       std::for_each(cbegin(m_memory), cend(m_memory),
-                    [&callback](ArgumentHelper::Container const &args) {
+                    [&callback](typename ArgumentHelper::Container const &args) {
                       if constexpr (ArgumentHelper::IsTuple::value) {
                         std::apply(callback, args);
                       } else {
@@ -122,7 +123,7 @@ struct ObserverCore final {
         m_memory.pop_front();
       }
       m_memory.emplace_back(std::forward<Args>(value)...);
-    } else if constexpr (std::is_same_v<ArgumentHelper, void>) {
+    } else if constexpr (std::is_same_v<typename ArgumentHelper::Container, void>) {
       if (m_memory < m_nMemory) {
         ++m_memory;
       }
