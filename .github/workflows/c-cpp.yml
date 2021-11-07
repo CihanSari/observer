@@ -1,0 +1,49 @@
+name: observer_CI
+
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [published]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  observer_CI:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_name: linux
+            os: ubuntu-latest
+            cxx: g++-11
+          - platform_name: windows
+            os: windows-latest
+            cxx: msvc
+          - platform_name: macos
+            os: macos-latest
+            cxx: clang++
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Configure CMake
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: cmake . -DCMAKE_INSTALL_PREFIX=artifacts
+
+      - name: Build & Install
+        run: cmake --build . --config Release --target install
+
+      - name: Test
+        run: ctest -C Release --output-on-failure
+
+      - name: Upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: binary_bakery_${{ github.run_number }}_${{ matrix.platform_name }}
+          path: ${{github.workspace}}/artifacts
