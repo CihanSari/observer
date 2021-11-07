@@ -97,11 +97,14 @@ struct ObserverCore final {
   auto appendMemory(Args &&...value) {
     static_assert(sizeof...(Args) < 2,
                   "appendMemory accepts maximum one parameter");
+    if (m_nMemory == 0) {
+      return;
+    }
     if constexpr (sizeof...(Args) == 1) {
       if (size(m_memory) == m_nMemory) {
         m_memory.pop_front();
       }
-      return m_memory.emplace_back(std::forward<Args>(value)...);
+      m_memory.emplace_back(std::forward<Args>(value)...);
     } else if constexpr (std::is_same_v<T, void>) {
       if (m_memory < m_nMemory) {
         ++m_memory;
@@ -113,17 +116,7 @@ struct ObserverCore final {
   void next(Args &&...value) {
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
-      if constexpr (sizeof...(Args) == 1) {
-        if (m_nMemory > 0) {
-          appendMemory(std::forward<Args>(value)...);
-        }
-      } else if constexpr (std::is_same_v<T, void>) {
-        if (m_memory < m_nMemory) {
-          ++m_memory;
-        }
-      } else {
-        static_assert(true, "next accepts maximum one parameter");
-      }
+      appendMemory(std::forward<Args>(value)...);
       return callbackQueue();
     }();
 
