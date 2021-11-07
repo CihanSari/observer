@@ -134,7 +134,7 @@ struct ObserverCore final {
   void next(Args &&...value) {
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
-      appendMemory(std::forward<Args>(value)...);
+      appendMemory(value...);
       return callbackQueue();
     }();
 
