@@ -8,14 +8,19 @@
 #include <vector>
 
 namespace csari {
+// Subscription can be copied and shared around. Callbacks will continue until
+// last copy is removed.
+using Subscription = std::shared_ptr<void>;
 namespace ob_internal {
 
 template <typename T>
 struct ObserverMemoryType {
+  // Memory keeps list of content that should be sent to each observer
   using MemoryType = std::deque<T>;
 };
 template <>
 struct ObserverMemoryType<void> {
+  // Memory with void is number of calls that should be sent to each observer
   // https://en.cppreference.com/w/cpp/language/zero_initialization
   using MemoryType = std::size_t;
 };
@@ -28,10 +33,18 @@ template <>
 struct Function<void> {
   using F = std::function<void()>;
 };
+
+// Generate a "unique" id per subscription to self-clean.
+auto getNextId() {
+  static std::atomic_size_t sNextId{};
+  return ++sNextId;
+}
+
 // Core observer. All callbacks, subscriptions and memory is shared with this
 // object.
 template <typename T, class F>
 struct ObserverCore final {
+  // Keeps track of subscriber ids and their callback functions
   std::unordered_map<std::size_t, F> m_map;
   // thread safety
   std::mutex m_mutex;
@@ -39,8 +52,6 @@ struct ObserverCore final {
   typename ObserverMemoryType<T>::MemoryType m_memory{};
   // maximum memory size
   std::size_t m_nMemory{0u};
-  // number of listeners out there
-  std::size_t m_callbackCounter{0u};
 
   // memory size setter if type is not void
   void setMemorySize(std::size_t const nMemory) {
@@ -83,7 +94,7 @@ struct ObserverCore final {
   }
 
   template <typename... Args>
-  auto appendMemory(Args &&... value) {
+  auto appendMemory(Args &&...value) {
     static_assert(sizeof...(Args) < 2,
                   "appendMemory accepts maximum one parameter");
     if constexpr (sizeof...(Args) == 1) {
@@ -99,7 +110,7 @@ struct ObserverCore final {
   }
 
   template <typename... Args>
-  void next(Args &&... value) {
+  void next(Args &&...value) {
     auto callbacks = [&] {
       auto const lock = std::lock_guard{m_mutex};
       if constexpr (sizeof...(Args) == 1) {
@@ -150,12 +161,6 @@ class SubscriptionBase final {
   WeakO m_weakD;
   std::size_t m_idx;
 };
-}  // namespace ob_internal
-
-// Subscription can be copied and shared around. Callbacks will continue until
-// last copy is removed.
-using Subscription = std::shared_ptr<void>;
-namespace ob_internal {
 
 // Subscription helper
 template <typename T, class F>
@@ -164,9 +169,7 @@ template <typename T, class F>
   // Access shared elements via lock-guard
   auto const idxSubscription = [&] {
     auto const lock = std::lock_guard{d->m_mutex};
-    auto const idx = d->m_callbackCounter++;
-    d->m_map.emplace(idx, callback);
-    return idx;
+    return d->m_map.emplace(getNextId(), callback).first->first;
   }();
   // Perform cached callbacks without any lock
   d->callbackFromMemory(callback);
@@ -174,7 +177,6 @@ template <typename T, class F>
   return std::make_shared<SubscriptionBase<T, F>>(std::move(d),
                                                   idxSubscription);
 }
-}  // namespace ob_internal
 
 template <typename T, class F>
 class ObservableBase final {
@@ -238,7 +240,7 @@ class SubjectBase final {
   }
 
   template <typename... Args>
-  auto operator<<(Args &&... value) -> SubjectBase & {
+  auto operator<<(Args &&...value) -> SubjectBase & {
     static_assert(sizeof...(Args) < 2,
                   "pipe operator accepts maximum one parameter");
     d->next(std::forward<Args>(value)...);
@@ -246,16 +248,19 @@ class SubjectBase final {
   }
 
   template <typename... Args>
-  auto next(Args &&... value) -> SubjectBase & {
+  auto next(Args &&...value) -> SubjectBase & {
     static_assert(sizeof...(Args) < 2, "next accepts maximum one parameter");
     d->next(std::forward<Args>(value)...);
     return *this;
   }
 };
+}  // namespace ob_internal
 
 template <typename T>
-using Subject = SubjectBase<T, typename ob_internal::Function<T>::F>;
+using Subject =
+    ob_internal::SubjectBase<T, typename ob_internal::Function<T>::F>;
 
 template <typename T>
-using Observable = ObservableBase<T, typename ob_internal::Function<T>::F>;
+using Observable =
+    ob_internal::ObservableBase<T, typename ob_internal::Function<T>::F>;
 }  // namespace csari
