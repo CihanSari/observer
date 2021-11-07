@@ -302,3 +302,14 @@ TEST_CASE("nonVoidSubjectOperatorCallTests") {
   REQUIRE(std::equal(begin(cacheValues), end(cacheValues),
                      begin(returnedValues), end(returnedValues)) == true);
 }
+
+TEST_CASE("multiParameterSubjectOperatorCallTests") {
+  auto subject = csari::Subject<double, int>{};
+
+  subject.next(4.5, 5);
+
+  auto const sub = subject.subscribe([](double const val1, int const val2) {
+    REQUIRE(val1 == 4.5);
+    REQUIRE(val2 == 5);
+  });
+}
