@@ -75,8 +75,8 @@ struct ObserverCore final {
         m_memory = m_nMemory;
       }
     } else {
-      auto const currentMemorySize = size(m_memory);
-      if (currentMemorySize > m_nMemory) {
+      if (auto const currentMemorySize = size(m_memory);
+          currentMemorySize > m_nMemory) {
         auto const nMemoryToFree = currentMemorySize - m_nMemory;
         // Should we move these items outside and let them get deconstructed
         // without the lock guard?
@@ -93,13 +93,13 @@ struct ObserverCore final {
       }
     } else {
       std::for_each(cbegin(m_memory), cend(m_memory),
-                    [&callback](typename ArgumentHelper::Container const &args) {
-                      if constexpr (ArgumentHelper::IsTuple::value) {
-                        std::apply(callback, args);
-                      } else {
-                        std::invoke(callback, args);
-                      }
-                    });
+          [&callback](typename ArgumentHelper::Container const &args) {
+            if constexpr (ArgumentHelper::IsTuple::value) {
+              std::apply(callback, args);
+            } else {
+              std::invoke(callback, args);
+            }
+          });
     }
   }
 
@@ -267,6 +267,40 @@ class SubjectBase final {
     return *this;
   }
 };
+
+template <typename ArgumentHelper>
+class PipeBase final {
+ public:
+  PipeBase() = default;
+  template <class SuperObservable, class F>
+  PipeBase(SuperObservable &&superObservable, F pipeFunction) {
+    createPipe(std::forward<SuperObservable>(superObservable),
+               std::move(pipeFunction));
+  }
+
+  template <class SuperObservable, class F>
+  auto createPipe(SuperObservable &&superObservable, F pipeFunction) {
+    m_subscriptions.emplace_back(superObservable.subscribe(
+        [&pipeSubject = m_pipeSubject, pipeFunction](auto... args) mutable {
+          pipeFunction(pipeSubject, args...);
+        }));
+  }
+
+  // Store the returned subscription to receive further callbacks
+  [[nodiscard]] auto subscribe(typename ArgumentHelper::F &&callback)
+      -> Subscription {
+    return m_pipeSubject.subscribe(
+        std::forward<typename ArgumentHelper::F>(callback));
+  }
+
+  auto asObservable() const { return m_pipeSubject.asObservable(); }
+
+  auto subject() { return m_pipeSubject.share(); }
+
+ private:
+  SubjectBase<ArgumentHelper> m_pipeSubject;
+  std::vector<Subscription> m_subscriptions;
+};
 }  // namespace ob_internal
 
 template <typename... Args>
@@ -275,5 +309,9 @@ using Subject = ob_internal::SubjectBase<
 
 template <typename... Args>
 using Observable = ob_internal::ObservableBase<
+    typename ob_internal::ObserverArgumentHelper<Args...>>;
+
+template <typename... Args>
+using Pipe = ob_internal::PipeBase<
     typename ob_internal::ObserverArgumentHelper<Args...>>;
 }  // namespace csari
