@@ -45,12 +45,6 @@ struct ObserverMemoryType<void> {
   using MemoryType = std::size_t;
 };
 
-// Generate a "unique" id per subscription to self-clean.
-auto getNextId() {
-  static std::atomic<size_t> sNextId{};
-  return ++sNextId;
-}
-
 // Core observer. All callbacks, subscriptions and memory is shared with this
 // object.
 template <typename ArgumentHelper>
@@ -150,9 +144,9 @@ struct ObserverCore final {
 template <typename ArgumentHelper>
 class SubscriptionBase final {
  public:
-  using WeakO = std::weak_ptr<ObserverCore<ArgumentHelper>>;
-  SubscriptionBase(WeakO &&d, std::size_t const idx)
-      : m_weakD{std::forward<WeakO>(d)}, m_idx{idx} {}
+  using WeakCore = std::weak_ptr<ObserverCore<ArgumentHelper>>;
+  SubscriptionBase(WeakCore &&d, std::size_t const idx)
+      : m_weakD{std::forward<WeakCore>(d)}, m_idx{idx} {}
   ~SubscriptionBase() {
     if (auto const d = m_weakD.lock()) {
       // Subject is still alive, we should unsubscribe
@@ -169,7 +163,7 @@ class SubscriptionBase final {
   SubscriptionBase &operator=(SubscriptionBase const &) = delete;
 
  private:
-  WeakO m_weakD;
+  WeakCore m_weakD;
   std::size_t m_idx;
 };
 
@@ -181,7 +175,8 @@ template <typename ArgumentHelper>
   // Access shared elements via lock-guard
   auto const idxSubscription = [&] {
     auto const lock = std::lock_guard{d->m_mutex};
-    return d->m_map.emplace(getNextId(), callback).first->first;
+    static std::atomic<size_t> sNextId{};
+    return d->m_map.emplace(++sNextId, callback).first->first;
   }();
   // Perform cached callbacks without any lock
   d->callbackFromMemory(callback);
@@ -192,54 +187,50 @@ template <typename ArgumentHelper>
 
 template <typename ArgumentHelper>
 class ObservableBase final {
-  using ObserverCore = ob_internal::ObserverCore<ArgumentHelper>;
-  std::weak_ptr<ObserverCore> d;
+  using Core = ObserverCore<ArgumentHelper>;
+  std::weak_ptr<Core> d;
 
  public:
   ObservableBase() = default;
 
   // Construct observable from a weak core.
-  explicit ObservableBase(std::weak_ptr<ObserverCore> &&data)
-      : d{std::move(data)} {}
+  explicit ObservableBase(std::weak_ptr<Core> &&data) : d{std::move(data)} {}
 
   // Check if the core still exists.
-  bool isAlive() const { return !d.expired(); }
+  [[nodiscard]] bool isAlive() const { return !d.expired(); }
 
   // Subscribe to the core if it still exists, returns nullopt otherwise.
-  [[nodiscard]] auto subscribe(typename ObserverCore::F &&callback)
-      -> Subscription {
+  [[nodiscard]] auto subscribe(typename Core::F &&callback) -> Subscription {
     if (auto s_d = d.lock()) {
-      return ob_internal::subscribe(
-          std::move(s_d), std::forward<typename ObserverCore::F>(callback));
+      return ob_internal::subscribe(std::move(s_d),
+                                    std::forward<typename Core::F>(callback));
     } else {
       return nullptr;
     }
   }
 
   // Create another observable with the same weak_ptr core.
-  auto share() const { return ObservableBase{std::weak_ptr<ObserverCore>{d}}; }
+  auto share() const { return ObservableBase{std::weak_ptr<Core>{d}}; }
 };
 
 template <typename ArgumentHelper>
 class SubjectBase final {
-  using ObserverCore = ob_internal::ObserverCore<ArgumentHelper>;
+  using Core = ob_internal::ObserverCore<ArgumentHelper>;
 
   // Create a core
-  std::shared_ptr<ObserverCore> d = std::make_shared<ObserverCore>();
+  std::shared_ptr<Core> d = std::make_shared<Core>();
 
   // Construct from core.
-  explicit SubjectBase(std::shared_ptr<ObserverCore> &&shallowCore)
+  explicit SubjectBase(std::shared_ptr<Core> &&shallowCore)
       : d{std::move(shallowCore)} {}
 
  public:
   SubjectBase() = default;
 
   // Store the returned subscription to receive further callbacks
-  [[nodiscard]] auto subscribe(typename ObserverCore::F &&callback)
-      -> Subscription {
-    return ob_internal::subscribe(
-        std::shared_ptr<ObserverCore>{d},
-        std::forward<typename ObserverCore::F>(callback));
+  [[nodiscard]] auto subscribe(typename Core::F &&callback) -> Subscription {
+    return ob_internal::subscribe(std::shared_ptr<Core>{d},
+                                  std::forward<typename Core::F>(callback));
   }
 
   // Number of triggers stored for new subscribers
@@ -251,8 +242,8 @@ class SubjectBase final {
   }
 
   // Create a sharable shallow subject. Both subjects point to the same core.
-  auto share() const -> SubjectBase {
-    return SubjectBase{std::shared_ptr<ObserverCore>{d}};
+  [[nodiscard]] auto share() const -> SubjectBase {
+    return SubjectBase{std::shared_ptr<Core>{d}};
   }
 
   template <typename... Args>
@@ -304,14 +295,11 @@ class PipeBase final {
 }  // namespace ob_internal
 
 template <typename... Args>
-using Subject = ob_internal::SubjectBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Subject = ob_internal::SubjectBase<ob_internal::ObserverArgumentHelper<Args...>>;
 
 template <typename... Args>
-using Observable = ob_internal::ObservableBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Observable = ob_internal::ObservableBase<ob_internal::ObserverArgumentHelper<Args...>>;
 
 template <typename... Args>
-using Pipe = ob_internal::PipeBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Pipe = ob_internal::PipeBase<ob_internal::ObserverArgumentHelper<Args...>>;
 }  // namespace csari
