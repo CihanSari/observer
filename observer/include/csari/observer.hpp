@@ -45,12 +45,6 @@ struct ObserverMemoryType<void> {
   using MemoryType = std::size_t;
 };
 
-// Generate a "unique" id per subscription to self-clean.
-auto getNextId() {
-  static std::atomic<size_t> sNextId{};
-  return ++sNextId;
-}
-
 // Core observer. All callbacks, subscriptions and memory is shared with this
 // object.
 template <typename ArgumentHelper>
@@ -181,7 +175,8 @@ template <typename ArgumentHelper>
   // Access shared elements via lock-guard
   auto const idxSubscription = [&] {
     auto const lock = std::lock_guard{d->m_mutex};
-    return d->m_map.emplace(getNextId(), callback).first->first;
+    static std::atomic<size_t> sNextId{};
+    return d->m_map.emplace(++sNextId, callback).first->first;
   }();
   // Perform cached callbacks without any lock
   d->callbackFromMemory(callback);
@@ -192,7 +187,7 @@ template <typename ArgumentHelper>
 
 template <typename ArgumentHelper>
 class ObservableBase final {
-  using ObserverCore = ob_internal::ObserverCore<ArgumentHelper>;
+  using ObserverCore = ObserverCore<ArgumentHelper>;
   std::weak_ptr<ObserverCore> d;
 
  public:
@@ -203,7 +198,7 @@ class ObservableBase final {
       : d{std::move(data)} {}
 
   // Check if the core still exists.
-  bool isAlive() const { return !d.expired(); }
+  [[nodiscard]] bool isAlive() const { return !d.expired(); }
 
   // Subscribe to the core if it still exists, returns nullopt otherwise.
   [[nodiscard]] auto subscribe(typename ObserverCore::F &&callback)
@@ -251,7 +246,7 @@ class SubjectBase final {
   }
 
   // Create a sharable shallow subject. Both subjects point to the same core.
-  auto share() const -> SubjectBase {
+  [[nodiscard]] auto share() const -> SubjectBase {
     return SubjectBase{std::shared_ptr<ObserverCore>{d}};
   }
 
@@ -304,14 +299,11 @@ class PipeBase final {
 }  // namespace ob_internal
 
 template <typename... Args>
-using Subject = ob_internal::SubjectBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Subject = ob_internal::SubjectBase<ob_internal::ObserverArgumentHelper<Args...>>;
 
 template <typename... Args>
-using Observable = ob_internal::ObservableBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Observable = ob_internal::ObservableBase<ob_internal::ObserverArgumentHelper<Args...>>;
 
 template <typename... Args>
-using Pipe = ob_internal::PipeBase<
-    typename ob_internal::ObserverArgumentHelper<Args...>>;
+using Pipe = ob_internal::PipeBase<ob_internal::ObserverArgumentHelper<Args...>>;
 }  // namespace csari
